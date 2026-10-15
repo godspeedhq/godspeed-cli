@@ -59,6 +59,16 @@ pub enum Kind {
     InvalidPackage,
     /// A package's bytes are not the ones its manifest names: a size or checksum mismatch.
     IntegrityFailure,
+    /// The registry does not accept these credentials: none, unknown, revoked or expired.
+    AuthenticationFailure,
+    /// The registry could not be reached, or failed, before anything was decided.
+    RegistryUnavailable,
+    /// The credentials are valid but do not allow this: publishing under someone else's namespace.
+    PermissionDenied,
+    /// The registry refused because of what already exists: the version is published, or being published.
+    Conflict,
+    /// Nobody can tell yet whether the operation happened. Never a failure, never a success.
+    OutcomeUnknown,
     /// GodspeedOS does not provide what this operation needs yet. Not a bug in the project.
     NotProvidedByOs,
     /// The CLI does not implement this operation yet.
@@ -80,9 +90,14 @@ impl Kind {
             Kind::TestFailure => 15,
             Kind::InvalidPackage => 16,
             Kind::IntegrityFailure => 17,
+            Kind::AuthenticationFailure => 18,
+            Kind::RegistryUnavailable => 19,
             Kind::NotProvidedByOs => 20,
             Kind::NotImplemented => 21,
             Kind::WrongProgram => 22,
+            Kind::PermissionDenied => 23,
+            Kind::Conflict => 24,
+            Kind::OutcomeUnknown => 25,
             Kind::Io => 30,
         }
     }
@@ -219,6 +234,11 @@ mod tests {
             Kind::TestFailure,
             Kind::InvalidPackage,
             Kind::IntegrityFailure,
+            Kind::AuthenticationFailure,
+            Kind::RegistryUnavailable,
+            Kind::PermissionDenied,
+            Kind::Conflict,
+            Kind::OutcomeUnknown,
             Kind::NotProvidedByOs,
             Kind::NotImplemented,
             Kind::WrongProgram,

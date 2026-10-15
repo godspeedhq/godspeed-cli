@@ -6,6 +6,8 @@
 //!
 //!     GODSPEED_OS=<path to a GodspeedOS checkout> cargo test -- --ignored
 
+#![forbid(unsafe_code)]
+
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -21,13 +23,37 @@ fn scratch(test: &str) -> PathBuf {
     dir
 }
 
-fn godspeed(dir: &Path, os: Option<&Path>, args: &[&str]) -> Output {
+/// The CLI, isolated from the developer's own setup: no OS checkout, registry or token from the environment,
+/// and a configuration directory of its own, so no test reads or writes real credentials.
+fn command(dir: &Path, os: Option<&Path>, args: &[&str]) -> Command {
     let mut c = Command::new(env!("CARGO_BIN_EXE_godspeed"));
-    c.current_dir(dir).env_remove("GODSPEED_OS");
+    c.current_dir(dir)
+        .env_remove("GODSPEED_OS")
+        .env_remove("GODSPEED_REGISTRY")
+        .env_remove("GODSPEED_TOKEN")
+        .env("GODSPEED_CONFIG_DIR", dir.join(".godspeed-config"));
     if let Some(os) = os {
         c.arg("--os").arg(os);
     }
-    c.args(args).output().unwrap()
+    c.args(args);
+    c
+}
+
+fn godspeed(dir: &Path, os: Option<&Path>, args: &[&str]) -> Output {
+    command(dir, os, args).output().unwrap()
+}
+
+/// The CLI with `input` on standard input.
+fn godspeed_with_input(dir: &Path, args: &[&str], input: &str) -> Output {
+    use std::io::Write;
+    let mut child = command(dir, None, args)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
+    child.wait_with_output().unwrap()
 }
 
 fn code(o: &Output) -> i32 {
@@ -202,12 +228,65 @@ fn run_and_service_test_say_the_os_cannot_do_it_yet() {
 }
 
 #[test]
-fn registry_commands_are_not_implemented_and_say_so() {
-    let dir = scratch("registry");
-    for verb in ["publish", "login", "logout", "whoami"] {
+fn account_commands_need_a_registry_and_say_how_to_name_one() {
+    let dir = scratch("no_registry");
+    for verb in ["login", "logout", "whoami"] {
         let o = godspeed(&dir, None, &[verb]);
-        assert_eq!(code(&o), 21, "{verb}");
+        assert_eq!(code(&o), 11, "{verb}: {}", stderr(&o));
+        assert!(stderr(&o).contains("--registry <url>"), "{verb}: {}", stderr(&o));
     }
+}
+
+#[test]
+fn a_registry_is_reached_over_https_unless_it_is_on_this_machine() {
+    let dir = scratch("plain_http");
+    let o = godspeed(&dir, None, &["whoami", "--registry", "http://registry.example"]);
+    assert_eq!(code(&o), 11, "{}", stderr(&o));
+    assert!(stderr(&o).contains("HTTPS"), "{}", stderr(&o));
+}
+
+#[test]
+fn login_refuses_what_is_not_a_token_without_contacting_anyone() {
+    let dir = scratch("bad_token");
+    // 127.0.0.1:9 (discard) is never a registry: had the CLI tried to contact it, the error would differ.
+    let o = godspeed_with_input(&dir, &["login", "--registry", "http://127.0.0.1:9"], "hunter2\n");
+    assert_eq!(code(&o), 18, "{}", stderr(&o));
+    assert!(stderr(&o).contains("not a Godspeed publisher token"), "{}", stderr(&o));
+    assert!(
+        !dir.join(".godspeed-config/credentials.toml").exists(),
+        "nothing is stored"
+    );
+}
+
+#[test]
+fn an_unreachable_registry_is_reported_as_unreachable_not_as_a_refusal() {
+    let dir = scratch("unreachable");
+    let o = godspeed_with_input(
+        &dir,
+        &["login", "--registry", "http://127.0.0.1:9"],
+        "gsp_0123456789abcdef\n",
+    );
+    assert_eq!(code(&o), 19, "{}", stderr(&o));
+    assert!(stderr(&o).contains("could not be reached"), "{}", stderr(&o));
+    assert!(
+        !dir.join(".godspeed-config/credentials.toml").exists(),
+        "an unchecked token is not stored"
+    );
+}
+
+#[test]
+fn publish_without_a_login_is_refused_before_building_anything() {
+    let dir = scratch("publish_no_login");
+    let os = fixture_os();
+    assert_eq!(code(&godspeed(&dir, Some(&os), &["new", "service", "hello"])), 0);
+    let o = godspeed(
+        &dir.join("hello"),
+        Some(&os),
+        &["publish", "--registry", "http://127.0.0.1:9"],
+    );
+    assert_eq!(code(&o), 18, "{}", stderr(&o));
+    assert!(stderr(&o).contains("not logged in"), "{}", stderr(&o));
+    assert!(!dir.join("hello/target").exists(), "refused before building");
 }
 
 #[test]

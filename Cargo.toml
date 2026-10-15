@@ -20,6 +20,11 @@ toml = "0.8"
 jsonschema = { version = "0.18", default-features = false }
 # The package contract, shared with the native package manager. `toml`: the CLI writes and reads manifests.
 godspeed-package = { path = "crates/godspeed-package", version = "0.1.0", features = ["toml"] }
+# The registry protocol: HTTPS with bundled Mozilla roots (no system certificate store, so the static Linux
+# builds work anywhere). rustls's crypto (ring) compiles some C, which the release builds provide for.
+ureq = { version = "2.12", default-features = false, features = ["tls", "json"] }
+# Reads a token from the terminal without echoing it.
+rpassword = "7"
 
 [profile.release]
 strip = true

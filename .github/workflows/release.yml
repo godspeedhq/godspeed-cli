@@ -9,13 +9,15 @@ name: release
 #              until a maintainer publishes the draft; `releases/latest` (what the installers fetch) never
 #              resolves to a draft.
 #
-# Run it by hand (workflow_dispatch) for a dry run: everything but publish. (It is deliberately not run on
-# pull requests: GitHub filters a PR's paths against the whole PR, so it would rebuild six targets on every
-# push to any PR that ever touched this file.)
+# For a dry run - everything but publish - run it by hand (workflow_dispatch, once it is on main), or push
+# any commit to the branch `dry-run/release`. (It is deliberately not run on pull requests: GitHub filters a
+# PR's paths against the whole PR, so it would rebuild six targets on every push to any PR that ever
+# touched this file.)
 
 on:
   push:
     tags: ['cli-v*']
+    branches: ['dry-run/release']
   workflow_dispatch:
 
 permissions:
@@ -71,6 +73,16 @@ jobs:
           fi
           rustup toolchain install stable --profile minimal --target ${{ matrix.target }}
           rustup default stable
+
+      # TLS (rustls, through ring) compiles a little C: static Linux builds need musl's C toolchain, and ring
+      # needs clang to build for Arm64 Windows.
+      - name: C toolchain for ring
+        shell: bash
+        run: |
+          case "${{ matrix.target }}" in
+            *-linux-musl) sudo apt-get update -qq && sudo apt-get install -y -qq musl-tools ;;
+            aarch64-pc-windows-msvc) echo 'C:/Program Files/LLVM/bin' >> "$GITHUB_PATH" ;;
+          esac
 
       - name: Build
         shell: bash

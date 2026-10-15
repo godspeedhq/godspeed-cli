@@ -23,7 +23,7 @@
 //!   yet, and nothing here pretends otherwise.
 
 #![no_std]
-#![deny(unsafe_code)]
+#![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
 #[cfg(any(test, feature = "toml"))]

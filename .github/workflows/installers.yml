@@ -35,6 +35,8 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal --target ${{ matrix.target }}
           rustup default stable
+          # ring (TLS) compiles C; a static musl build needs musl's C toolchain.
+          case "${{ matrix.target }}" in *-linux-musl) sudo apt-get update -qq && sudo apt-get install -y -qq musl-tools ;; esac
           cargo build --locked --target ${{ matrix.target }}
           mkdir dist
           ext=""

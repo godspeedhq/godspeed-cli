@@ -23,17 +23,6 @@ pub fn run_service(verb: &str) -> Diagnostic {
     )
 }
 
-pub fn registry(verb: &str) -> Diagnostic {
-    Diagnostic::new(
-        Kind::NotImplemented,
-        Stage::Authentication,
-        verb,
-        "There is no Godspeed registry protocol yet, and publisher keys - how they are registered, rotated \
-         and revoked - are not designed. Publishing comes after both, not before.",
-    )
-    .next("Nothing to do yet. `godspeed package` builds and verifies a package locally today.")
-}
-
 /// Verbs of the native package manager, typed on a workstation.
 pub fn native(verb: &str) -> Diagnostic {
     Diagnostic::new(

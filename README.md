@@ -75,7 +75,8 @@ the installers' `releases/latest` never resolves to a draft.
 | `package [--arch <isa>] [--out <dir>]` | works: builds every architecture, writes a package directory, and verifies it from disk before reporting it |
 | `verify <dir>` | works, with no OS checkout: checks every file against the manifest, and says it proves integrity only |
 | `run` | refused: GodspeedOS has no public way to run a service built outside its tree |
-| `publish`, `login`, `logout`, `whoami` | not implemented: the registry protocol and publisher keys are not designed yet |
+| `login`, `whoami`, `logout` | work: a publisher token for a registry, checked with it before it is stored; `logout` revokes it there |
+| `publish` | works: packages every architecture, then reserves, uploads and finalises; if finalising gets no answer it reads the registry's index and reports what it finds, and running it again is always safe |
 | `install`, `search`, `info`, `list`, `update`, `uninstall` | belong to the native package manager on a Godspeed machine, and say so |
 
 Running a service needs an OS build interface that takes a crate from outside the OS tree. Until
@@ -91,6 +92,18 @@ GodspeedOS has one, `godspeed run` says so rather than editing the OS for you.
     src/
 
 The contract grants nothing. What a service is actually given is the operating system's decision.
+
+## Publishing
+
+    godspeed login --registry <url>    # paste the token the registry maintainer issued you
+    godspeed whoami
+    godspeed publish                   # needs publisher = "<you>" in godspeed.toml
+
+The registry is the `godspeed-registry` service; there is no default until the official one is deployed,
+so name it with `--registry`, `GODSPEED_REGISTRY`, or once with `login`. `login` stores the token in
+`~/.config/godspeed/credentials.toml` (`%APPDATA%\godspeed` on Windows), readable by you alone; in CI, set
+`GODSPEED_TOKEN` instead and nothing is stored. The CLI holds a publisher token only - never storage
+credentials. Published releases are verified by the registry but not signed: signing is not built yet.
 
 ## The package contract
 
@@ -117,9 +130,14 @@ Scripts and CI can tell failures apart without reading the text:
 | 15 | test failure |
 | 16 | invalid package: a missing or extra file, a manifest that breaks the format |
 | 17 | integrity failure: a size or checksum mismatch |
+| 18 | authentication failure: not logged in, or the token is unknown, revoked or expired |
+| 19 | the registry could not be reached, before anything was published |
 | 20 | GodspeedOS does not provide this yet |
 | 21 | this CLI does not implement this yet |
 | 22 | this is the native package manager's command, not this CLI's |
+| 23 | permission denied: the namespace is not yours |
+| 24 | conflict: the version is already published, or being published |
+| 25 | outcome unknown: finalising got no answer and the index does not show it yet - run `publish` again |
 | 30 | a local file could not be read or written |
 
 ## Development

@@ -4,10 +4,14 @@
 //! contracts of a named GodspeedOS release. It is not the OS, not a supervisor, and not the native
 //! package manager; where a command needs something GodspeedOS does not provide yet, it says so.
 
+// Nothing in the CLI needs `unsafe`, and `forbid` (unlike `deny`) cannot be switched off further in.
+#![forbid(unsafe_code)]
+
 mod cmd;
 mod diag;
 mod platform;
 mod project;
+mod registry;
 mod target;
 
 use clap::{Parser, Subcommand};
@@ -23,6 +27,10 @@ struct Cli {
     /// The GodspeedOS checkout to build against. Defaults to the GODSPEED_OS environment variable.
     #[arg(long, global = true, value_name = "PATH")]
     os: Option<PathBuf>,
+
+    /// The package registry to publish to. Defaults to GODSPEED_REGISTRY, then the last `login`.
+    #[arg(long, global = true, value_name = "URL")]
+    registry: Option<String>,
 
     #[command(subcommand)]
     command: Command,
@@ -73,13 +81,13 @@ enum Command {
         /// The package directory
         path: PathBuf,
     },
-    /// Publish the package to a registry (not available yet)
+    /// Package the project and publish it to a registry
     Publish,
-    /// Sign in as a publisher (not available yet)
+    /// Store a publisher token for a registry (read from the terminal, or from standard input)
     Login,
-    /// Sign out (not available yet)
+    /// Revoke the token at the registry and remove it from this machine
     Logout,
-    /// Show the signed-in publisher (not available yet)
+    /// Show which account the token belongs to, and where it may publish
     Whoami,
     /// Check the development environment: OS checkout, toolchain, targets, QEMU
     Doctor,
@@ -125,6 +133,7 @@ fn current_project() -> Result<Project, Diagnostic> {
 
 fn dispatch(cli: Cli) -> diag::Result<()> {
     let os = cli.os.as_deref();
+    let reg = cli.registry.as_deref();
     match cli.command {
         Command::New { kind, name, dir } => {
             let platform = Platform::locate(os)?;
@@ -198,10 +207,14 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
             cmd::verify::report(&verified);
             Ok(())
         }
-        Command::Publish => Err(cmd::unavailable::registry("publish").into()),
-        Command::Login => Err(cmd::unavailable::registry("sign in").into()),
-        Command::Logout => Err(cmd::unavailable::registry("sign out").into()),
-        Command::Whoami => Err(cmd::unavailable::registry("show the signed-in publisher").into()),
+        Command::Publish => {
+            let platform = Platform::locate(os)?;
+            let project = current_project()?;
+            cmd::publish::run(&platform, &project, reg)
+        }
+        Command::Login => cmd::account::login(reg),
+        Command::Logout => cmd::account::logout(reg),
+        Command::Whoami => cmd::account::whoami(reg),
         Command::Doctor => cmd::doctor::run(os).map_err(Into::into),
         Command::Search { .. } => Err(cmd::unavailable::native("search").into()),
         Command::Info { .. } => Err(cmd::unavailable::native("info").into()),
