@@ -13,6 +13,8 @@ use std::path::{Path, PathBuf};
 struct Line {
     what: String,
     ok: bool,
+    /// Reported but never fails the check: absent is "not found", not MISSING.
+    optional: bool,
     detail: String,
     fix: Option<String>,
 }
@@ -26,6 +28,7 @@ pub fn run(os_flag: Option<&Path>) -> Result<(), Diagnostic> {
             lines.push(Line {
                 what: "GodspeedOS checkout".into(),
                 ok: true,
+                optional: false,
                 detail: format!("{} ({})", p.root.display(), p.version),
                 fix: None,
             });
@@ -36,6 +39,7 @@ pub fn run(os_flag: Option<&Path>) -> Result<(), Diagnostic> {
             lines.push(Line {
                 what: "GodspeedOS checkout".into(),
                 ok: false,
+                optional: false,
                 detail: d.reason.clone(),
                 fix: d.next.clone(),
             });
@@ -49,6 +53,7 @@ pub fn run(os_flag: Option<&Path>) -> Result<(), Diagnostic> {
                 lines.push(Line {
                     what: "Rust toolchain".into(),
                     ok: true,
+                    optional: false,
                     detail: p.toolchain.clone(),
                     fix: None,
                 });
@@ -58,6 +63,7 @@ pub fn run(os_flag: Option<&Path>) -> Result<(), Diagnostic> {
                     lines.push(Line {
                         what: format!("target {}", a.name),
                         ok,
+                        optional: false,
                         detail: a.triple.into(),
                         fix: (!ok).then(|| format!("rustup target add --toolchain {} {}", p.toolchain, a.triple)),
                     });
@@ -68,6 +74,7 @@ pub fn run(os_flag: Option<&Path>) -> Result<(), Diagnostic> {
                 lines.push(Line {
                     what: "Rust toolchain".into(),
                     ok: false,
+                    optional: false,
                     detail: d.reason.clone(),
                     fix: d.next.clone(),
                 });
@@ -78,6 +85,7 @@ pub fn run(os_flag: Option<&Path>) -> Result<(), Diagnostic> {
             lines.push(Line {
                 what: format!("QEMU {} (optional)", a.name),
                 ok: found.is_some(),
+                optional: true,
                 detail: found
                     .map(|f| f.display().to_string())
                     .unwrap_or_else(|| format!("{} not found", a.qemu)),
@@ -87,7 +95,16 @@ pub fn run(os_flag: Option<&Path>) -> Result<(), Diagnostic> {
     }
 
     for l in &lines {
-        println!("{:<26} {:<8} {}", l.what, if l.ok { "ok" } else { "MISSING" }, l.detail);
+        println!(
+            "{:<26} {:<8} {}",
+            l.what,
+            match (l.ok, l.optional) {
+                (true, _) => "ok",
+                (false, true) => "absent",
+                (false, false) => "MISSING",
+            },
+            l.detail
+        );
         if let Some(fix) = &l.fix {
             for f in fix.lines() {
                 println!("{:<26} {:<8} {}", "", "fix:", f);
