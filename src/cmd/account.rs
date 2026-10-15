@@ -1,11 +1,37 @@
-//! `godspeed login`, `whoami` and `logout`: a publisher token for a registry.
+//! `godspeed login`, `whoami`, `logout` and `token new`: a publisher token for a registry.
 //!
-//! Phase 1 tokens are issued by the registry maintainer by hand. `login` checks a token with the registry
-//! before storing it, so a stored token is one the registry accepted at that moment.
+//! Tokens are made HERE, on the publisher's machine, the way SSH keys are: `godspeed login` makes one, keeps it
+//! readable by the user alone, and prints its fingerprint (its SHA-256). The publisher sends the maintainer
+//! only that fingerprint, which the maintainer approves for their account. So the token itself never travels
+//! to anyone - not to the maintainer, not through a workflow log - and the registry only ever stores the
+//! fingerprint.
 
 use crate::diag::{Diagnostic, Kind, Result, Stage};
 use crate::registry::{self, Answer, Client, Credentials, Entry, TOKEN_ENV};
+use godspeed_package::Sha256Digest;
 use std::io::{BufRead, IsTerminal};
+
+/// A token's fingerprint: what the maintainer approves, and all the registry stores.
+pub fn fingerprint(token: &str) -> String {
+    Sha256Digest::of(token.as_bytes()).to_string()
+}
+
+/// A new token: `gsp_` and 64 hex digits from the operating system's random source.
+fn new_token() -> std::result::Result<String, Diagnostic> {
+    let mut bytes = [0u8; 32];
+    getrandom::getrandom(&mut bytes).map_err(|e| {
+        Diagnostic::new(
+            Kind::Environment,
+            Stage::Authentication,
+            "make a publisher token",
+            format!("The operating system's random number source failed: {e}"),
+        )
+    })?;
+    Ok(format!(
+        "gsp_{}",
+        bytes.iter().map(|b| format!("{b:02x}")).collect::<String>()
+    ))
+}
 
 fn read_token() -> std::result::Result<String, Diagnostic> {
     let stdin = std::io::stdin();
@@ -32,28 +58,89 @@ fn read_token() -> std::result::Result<String, Diagnostic> {
             "log in",
             "That is not a Godspeed publisher token.",
         )
-        .expected("a token beginning gsp_, as issued by the registry maintainer"));
+        .expected("a token beginning gsp_, from `godspeed login` or `godspeed token new`"));
     }
     Ok(token)
 }
 
-pub fn login(flag: Option<&str>) -> Result<()> {
+fn approval_instructions(fp: &str) {
+    println!("Its fingerprint:");
+    println!("  {fp}");
+    println!("Send the registry maintainer this fingerprint - never the token itself - and your account name.");
+    println!("Once they approve it, `godspeed whoami` shows your account.");
+}
+
+pub fn login(flag: Option<&str>, with_token: bool) -> Result<()> {
     let mut creds = Credentials::load()?;
     let url = registry::resolve(flag, &creds)?;
-    let token = read_token()?;
-    eprintln!("Checking the token with {url}...");
-    let me = match Client::new(&url, Some(token.clone())).whoami() {
-        Answer::Done(me) => me,
-        Answer::Refused(r) => return Err(registry::refused("log in", &url, &r).into()),
-        Answer::Unknown(why) => return Err(registry::unreachable("log in", Stage::Authentication, &why).into()),
-    };
+
+    if with_token {
+        // A token made elsewhere (`godspeed token new`, say): checked with the registry before it is stored.
+        let token = read_token()?;
+        eprintln!("Checking the token with {url}...");
+        let me = match Client::new(&url, Some(token.clone())).whoami() {
+            Answer::Done(me) => me,
+            Answer::Refused(r) => return Err(registry::refused("log in", &url, &r).into()),
+            Answer::Unknown(why) => return Err(registry::unreachable("log in", Stage::Authentication, &why).into()),
+        };
+        creds.registries.insert(url.clone(), Entry { token });
+        creds.default = Some(url.clone());
+        let path = creds.save()?;
+        println!("Logged in to {url} as {}.", me.account);
+        println!("  may publish under: {}", namespaces(&me.publishers));
+        println!("  token expires:     {}", me.token_expires);
+        println!("  stored in:         {} (readable by you alone)", path.display());
+        return Ok(());
+    }
+
+    // A token already here: say where it stands, and replace it only if it can never work again.
+    if let Some(entry) = creds.registries.get(&url).cloned() {
+        let fp = fingerprint(&entry.token);
+        match Client::new(&url, Some(entry.token)).whoami() {
+            Answer::Done(me) => {
+                println!("Already logged in to {url} as {}.", me.account);
+                println!("  may publish under: {}", namespaces(&me.publishers));
+                println!("  token expires:     {}", me.token_expires);
+                return Ok(());
+            }
+            Answer::Refused(r) if r.error == "token-not-approved" => {
+                println!("Your token for {url} is waiting for the registry maintainer's approval.");
+                approval_instructions(&fp);
+                return Ok(());
+            }
+            Answer::Refused(r) if r.error == "unauthenticated" || r.error == "token-expired" => {
+                eprintln!("The stored token no longer works ({}); making a new one.", r.message);
+            }
+            Answer::Refused(r) => return Err(registry::refused("log in", &url, &r).into()),
+            Answer::Unknown(why) => {
+                println!("You have a token for {url}; whether it is approved could not be checked ({why}).");
+                approval_instructions(&fp);
+                return Ok(());
+            }
+        }
+    }
+
+    let token = new_token()?;
+    let fp = fingerprint(&token);
     creds.registries.insert(url.clone(), Entry { token });
     creds.default = Some(url.clone());
     let path = creds.save()?;
-    println!("Logged in to {url} as {}.", me.account);
-    println!("  may publish under: {}", namespaces(&me.publishers));
-    println!("  token expires:     {}", me.token_expires);
-    println!("  stored in:         {} (readable by you alone)", path.display());
+    println!(
+        "Made a publisher token for {url}, stored in {} (readable by you alone).",
+        path.display()
+    );
+    approval_instructions(&fp);
+    Ok(())
+}
+
+/// A token for CI: printed once, stored nowhere. Its fingerprint goes to the maintainer, the token to a CI
+/// secret (`GODSPEED_TOKEN`).
+pub fn token_new() -> Result<()> {
+    let token = new_token()?;
+    println!("{token}");
+    eprintln!("Fingerprint: {}", fingerprint(&token));
+    eprintln!("The token above is shown once and saved nowhere. Put it in your CI's secrets as {TOKEN_ENV}, and");
+    eprintln!("send the registry maintainer the fingerprint - never the token - and your account name.");
     Ok(())
 }
 
@@ -61,12 +148,14 @@ pub fn whoami(flag: Option<&str>) -> Result<()> {
     let creds = Credentials::load()?;
     let url = registry::resolve(flag, &creds)?;
     let (token, from) = registry::token(&url, &creds)?;
+    let fp = fingerprint(&token);
     match Client::new(&url, Some(token)).whoami() {
         Answer::Done(me) => {
             println!("{} on {url}", me.account);
             println!("  may publish under: {}", namespaces(&me.publishers));
             println!("  token expires:     {}", me.token_expires);
             println!("  token from:        {from}");
+            println!("  fingerprint:       {fp}");
             Ok(())
         }
         Answer::Refused(r) => Err(registry::refused("show who you are", &url, &r).into()),
@@ -101,10 +190,12 @@ pub fn logout(flag: Option<&str>) -> Result<()> {
             }
             Ok(())
         }
-        // Already unusable (revoked or expired): logging out has nothing left to do remotely.
-        Answer::Refused(r) if r.error == "unauthenticated" || r.error == "token-expired" => {
+        // Never approved, or already unusable: there is nothing left to revoke remotely.
+        Answer::Refused(r)
+            if r.error == "token-not-approved" || r.error == "unauthenticated" || r.error == "token-expired" =>
+        {
             println!(
-                "Logged out of {url}. The registry no longer accepted the token: {}",
+                "Logged out of {url}. The registry did not accept the token anyway: {}",
                 r.message
             );
             Ok(())

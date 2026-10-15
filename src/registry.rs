@@ -331,10 +331,17 @@ impl Client {
 /// Turn a refusal into a diagnostic a developer can act on. `doing` completes "Cannot ...".
 pub fn refused(doing: &str, registry: &str, r: &Refusal) -> Diagnostic {
     let (kind, stage, next): (Kind, Stage, String) = match r.error.as_str() {
+        "token-not-approved" => (
+            Kind::AuthenticationFailure,
+            Stage::Authentication,
+            "Send the registry maintainer that fingerprint and your account name, and wait for them to approve it. \
+             (`godspeed login` prints it again.)"
+                .into(),
+        ),
         "unauthenticated" | "token-expired" => (
             Kind::AuthenticationFailure,
             Stage::Authentication,
-            format!("Run `godspeed login --registry {registry}` with a current token from the registry maintainer."),
+            format!("Run `godspeed login --registry {registry}`: it makes a new token for the maintainer to approve."),
         ),
         "namespace-not-yours" => (
             Kind::PermissionDenied,

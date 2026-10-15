@@ -105,8 +105,17 @@ enum Command {
     },
     /// Package the project and publish it to a registry
     Publish,
-    /// Store a publisher token for a registry (read from the terminal, or from standard input)
-    Login,
+    /// Make a publisher token for a registry and print its fingerprint, for the maintainer to approve
+    Login {
+        /// Store an existing token instead (read from the terminal, or from standard input), checked first
+        #[arg(long)]
+        with_token: bool,
+    },
+    /// Publisher tokens for CI
+    Token {
+        #[command(subcommand)]
+        action: TokenAction,
+    },
     /// Revoke the token at the registry and remove it from this machine
     Logout,
     /// Show which account the token belongs to, and where it may publish
@@ -146,6 +155,12 @@ enum Command {
         #[arg(trailing_var_arg = true)]
         _rest: Vec<String>,
     },
+}
+
+#[derive(Subcommand)]
+enum TokenAction {
+    /// Make a token, print it once and store it nowhere (for a CI secret), with its fingerprint
+    New,
 }
 
 #[derive(Subcommand)]
@@ -252,7 +267,10 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
             let project = current_project()?;
             cmd::publish::run(&platform, &project, reg)
         }
-        Command::Login => cmd::account::login(reg),
+        Command::Login { with_token } => cmd::account::login(reg, with_token),
+        Command::Token {
+            action: TokenAction::New,
+        } => cmd::account::token_new(),
         Command::Logout => cmd::account::logout(reg),
         Command::Whoami => cmd::account::whoami(reg),
         Command::Doctor => cmd::doctor::run(os).map_err(Into::into),

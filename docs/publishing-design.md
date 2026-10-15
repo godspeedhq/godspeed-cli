@@ -128,12 +128,15 @@ Structured, so the CLI can turn each into a "Cannot ... / Reason / Next" diagnos
 
 Authentication answers "may this request publish under `alice`". It is not signing (section 6).
 
-**Phase 1 (proposed): hand-approved publishers with API tokens.** CLAUDE.md allows approving publishers by
-hand first. The maintainer creates a publisher (`alice`) and issues a token scoped to that namespace.
-`godspeed login` stores it in the operating system's credential store (Windows Credential Manager, macOS
-Keychain, the Secret Service on Linux) and never in a project or package file; `godspeed whoami` asks
-the API who it belongs to; `godspeed logout` deletes it locally and revokes it remotely. Tokens expire
-(90 days proposed; still open) and can be revoked by the maintainer at any time.
+**Phase 1 (built): publisher-made tokens, approved by hand** (maintainer's decision, 2026-10-15). CLAUDE.md
+allows approving publishers by hand first. The publisher makes their token on their own machine
+(`godspeed login`, or `godspeed token new` for CI) and sends the maintainer only its fingerprint - its
+SHA-256 - like an SSH public key. The maintainer approves the fingerprint for an account (the registry's
+`admin` workflow), so the token itself never travels and never appears in any log, and the registry stores
+only the fingerprint. `godspeed whoami` asks the API who the token belongs to; `godspeed logout` deletes it
+locally and revokes it remotely. An approval lasts 90 days by default (the maintainer chooses, 1 to 366) and
+can be revoked at any time. The token is kept in a file readable by the user alone, not an OS credential
+store: on Linux that needs D-Bus and a C library the static builds cannot carry.
 
 **Phase 2: CI without long-lived secrets.** GitHub Actions can present a short-lived OIDC token naming the
 repository and workflow; the API maps an allowed repository to a namespace ("trusted publishing", as

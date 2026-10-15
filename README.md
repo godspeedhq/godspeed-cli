@@ -99,15 +99,18 @@ The contract grants nothing. What a service is actually given is the operating s
 ## Publishing
 
     godspeed key generate              # once; send the PUBLIC key it prints to the registry maintainer
-    godspeed login --registry <url>    # paste the token the registry maintainer issued you
-    godspeed whoami
+    godspeed login --registry <url>    # makes your token; send the FINGERPRINT it prints to the maintainer
+    godspeed whoami                    # once they approve it: your account and namespaces
     godspeed publish                   # needs publisher = "<you>" in godspeed.toml
 
-The registry is the `godspeed-registry` service; there is no default until the official one is deployed,
-so name it with `--registry`, `GODSPEED_REGISTRY`, or once with `login`. `login` stores the token in
-`~/.config/godspeed/credentials.toml` (`%APPDATA%\godspeed` on Windows), readable by you alone; in CI, set
-`GODSPEED_TOKEN` instead and nothing is stored. The CLI holds a publisher token only - never storage
-credentials.
+Your token is made on your machine, like an SSH key, and never leaves it: the maintainer approves only its
+fingerprint (its SHA-256), which is all the registry stores. `login` keeps it in
+`~/.config/godspeed/credentials.toml` (`%APPDATA%\godspeed` on Windows), readable by you alone; running it
+again is safe - it reports whether the token is still waiting, and makes a new one only if the old can never
+work again. For CI, `godspeed token new` prints a token once and stores nothing: put it in a CI secret as
+`GODSPEED_TOKEN`, and send the fingerprint as usual. The CLI holds a publisher token only - never storage
+credentials. The registry is the `godspeed-registry` service; there is no default until the official one is
+deployed, so name it with `--registry`, `GODSPEED_REGISTRY`, or once with `login`.
 
 Every release is signed with your key (`manifest.sig`), and the registry refuses one that is not signed by a
 key registered for your namespace. Your secret key stays in `signing-key.toml` beside the credentials,

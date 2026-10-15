@@ -246,11 +246,61 @@ fn a_registry_is_reached_over_https_unless_it_is_on_this_machine() {
     assert!(stderr(&o).contains("HTTPS"), "{}", stderr(&o));
 }
 
+/// The value after `marker` on the first line of `text` that contains it, trimmed.
+fn after<'a>(text: &'a str, marker: &str) -> &'a str {
+    text.lines()
+        .find_map(|l| l.split_once(marker).map(|(_, v)| v.trim()))
+        .unwrap_or("")
+}
+
+#[test]
+fn login_makes_a_token_here_and_prints_only_its_fingerprint() {
+    let dir = scratch("login_makes");
+    // 127.0.0.1:9 is never a registry: making a token needs no network.
+    let o = godspeed(&dir, None, &["login", "--registry", "http://127.0.0.1:9"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    let out = String::from_utf8_lossy(&o.stdout).into_owned();
+    let stored = std::fs::read_to_string(dir.join(".godspeed-config/credentials.toml")).unwrap();
+    let token = after(&stored, "token = ").trim_matches('"');
+    assert!(token.starts_with("gsp_") && token.len() == 4 + 64, "{token}");
+    let fp = godspeed_package::Sha256Digest::of(token.as_bytes()).to_string();
+    assert!(
+        out.contains(&fp),
+        "the fingerprint printed is the token's SHA-256: {out}"
+    );
+    assert!(!out.contains(token), "the token itself is never printed: {out}");
+
+    // Again: the same token, whose standing could not be checked - not a new one.
+    let o = godspeed(&dir, None, &["login", "--registry", "http://127.0.0.1:9"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    assert!(String::from_utf8_lossy(&o.stdout).contains(&fp));
+    assert_eq!(
+        std::fs::read_to_string(dir.join(".godspeed-config/credentials.toml")).unwrap(),
+        stored
+    );
+}
+
+#[test]
+fn token_new_prints_a_token_once_and_stores_nothing() {
+    let dir = scratch("token_new");
+    let o = godspeed(&dir, None, &["token", "new"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    let token = String::from_utf8_lossy(&o.stdout).trim().to_string();
+    assert!(token.starts_with("gsp_") && token.len() == 4 + 64, "{token}");
+    let fp = godspeed_package::Sha256Digest::of(token.as_bytes()).to_string();
+    assert!(stderr(&o).contains(&fp), "{}", stderr(&o));
+    assert!(!dir.join(".godspeed-config").exists(), "nothing stored");
+}
+
 #[test]
 fn login_refuses_what_is_not_a_token_without_contacting_anyone() {
     let dir = scratch("bad_token");
     // 127.0.0.1:9 (discard) is never a registry: had the CLI tried to contact it, the error would differ.
-    let o = godspeed_with_input(&dir, &["login", "--registry", "http://127.0.0.1:9"], "hunter2\n");
+    let o = godspeed_with_input(
+        &dir,
+        &["login", "--with-token", "--registry", "http://127.0.0.1:9"],
+        "hunter2\n",
+    );
     assert_eq!(code(&o), 18, "{}", stderr(&o));
     assert!(stderr(&o).contains("not a Godspeed publisher token"), "{}", stderr(&o));
     assert!(
@@ -264,7 +314,7 @@ fn an_unreachable_registry_is_reported_as_unreachable_not_as_a_refusal() {
     let dir = scratch("unreachable");
     let o = godspeed_with_input(
         &dir,
-        &["login", "--registry", "http://127.0.0.1:9"],
+        &["login", "--with-token", "--registry", "http://127.0.0.1:9"],
         "gsp_0123456789abcdef\n",
     );
     assert_eq!(code(&o), 19, "{}", stderr(&o));
