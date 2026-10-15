@@ -38,6 +38,9 @@ jobs:
       matrix:
         include:
           # Linux builds are static (musl): one binary runs on any distribution.
+          # armv7 and riscv64 Linux hosts are deliberately absent: cheap to cross-build, but GitHub has no
+          # runners for either, so they could only be tested under QEMU. (Packages - what the CLI builds -
+          # cover all four Godspeed ISAs regardless; this matrix is only where the CLI itself runs.)
           - { target: x86_64-unknown-linux-musl, os: ubuntu-latest, runs: true }
           - { target: aarch64-unknown-linux-musl, os: ubuntu-24.04-arm, runs: true }
           - { target: aarch64-apple-darwin, os: macos-latest, runs: true }

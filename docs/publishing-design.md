@@ -44,9 +44,7 @@ and is an administrator's tool. The CLI never names it.
     index/root.json            (section 6)
     index/timestamp.json       (section 6)
 
-and, in a **second, private bucket** `godspeedos-staging` that has no public domain at all:
-
-    <publisher>/<name>/<version>/<upload-id>/...   (in-progress uploads; section 3)
+    staging/<publisher>/<name>/<version>/<upload-id>/...   (in-progress uploads; section 3)
 
 - **`packages/` is immutable.** A key is written once, at finalisation, and never again. Served with a
   long cache lifetime; a CDN may hold it forever.
@@ -54,9 +52,13 @@ and, in a **second, private bucket** `godspeedos-staging` that has no public dom
 - The files under a version are exactly a package directory as `godspeed package` writes it and
   `godspeed verify` checks it (`docs/package-format.md`). A downloaded version is verifiable with the same
   command, by anyone.
-- **Staging is a separate bucket, not a prefix.** An R2 custom domain serves every key in its bucket, so a
-  `staging/` prefix beside `packages/` would make half-finished uploads downloadable. A bucket with no
-  public domain cannot leak them, whatever a route rule says.
+- **Staging shares the bucket for now, and is unfindable rather than private** (maintainer's decision,
+  2026-10-15, to run one bucket during alpha). An R2 public domain serves every key in its bucket, so a
+  staged file is downloadable by anyone holding its exact key. What keeps that harmless: the upload id in
+  the key is 128 random bits, the public URL does not list keys, the index never names a staged file (so
+  nothing staged is installable), staged files are deleted at finalisation, and a lifecycle rule on
+  `staging/` sweeps the rest within a day. **Before anyone but the maintainer holds a publisher token,
+  staging moves to a separate private bucket** with no public domain at all.
 
 ### The package index
 
@@ -95,15 +97,15 @@ reported only once its outcome is established:
    It returns an upload id and an expiry (15 minutes). **Concurrent publishes are decided here**: exactly
    one reservation per version succeeds; the other is told "1.0.0 is being published by another upload"
    or "1.0.0 already exists", and nothing it does can overwrite the winner.
-4. **Upload** each file: `PUT /v1/uploads/<id>/<file>`. The Worker writes to the staging bucket. Only the files
+4. **Upload** each file: `PUT /v1/uploads/<id>/<file>`. The Worker writes to `staging/`. Only the files
    the reserved manifest names are accepted, each checked against its declared size and digest as it
    streams in - the same `ArtifactVerifier`, compiled to WebAssembly, that the CLI and the native package
    manager use. A file that fails is refused at once.
 5. **Sign** (section 6) and **finalise**: `POST /v1/uploads/<id>/finalise`. The API re-verifies the whole
    staged package, copies it to `packages/.../<version>/`, then writes the index entry, then the timestamp.
    **The index write is the commit point.** Before it, the version does not exist for any reader; after it,
-   every file it names is already in place. A crash anywhere before it leaves only staged files, in a bucket
-   that is never served, swept when the reservation expires.
+   every file it names is already in place. A crash anywhere before it leaves only staged files, which no
+   index names and the lifecycle rule sweeps.
 6. **Report** `Published alice/hello@1.0.0` and the install line.
 
 ### When the outcome is unknown

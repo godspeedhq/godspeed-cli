@@ -22,6 +22,11 @@ what they do; read them first if you like (`install/`). Settings: `GODSPEED_VERS
 `GODSPEED_INSTALL_DIR`, `GODSPEED_NO_MODIFY_PATH=1`. Builds exist for x86_64 and Arm64 Linux (static, any
 distribution), macOS on Apple silicon and Intel, and x64 and Arm64 Windows.
 
+(Builds of the CLI for armv7 and riscv64 Linux hosts - a Raspberry Pi on a 32-bit OS, a VisionFive on
+Debian - would be cheap to add: two more static cross-builds. They are left out because GitHub has no
+runners for either, so they could only be tested under emulation. Packages, the programs the CLI builds,
+target all four Godspeed architectures regardless.)
+
 Or build it yourself with Rust:
 
     cargo install --git https://github.com/godspeedhq/godspeed-cli --locked godspeed-cli
