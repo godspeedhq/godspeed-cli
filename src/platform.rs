@@ -1,0 +1,183 @@
+//! The GodspeedOS platform the CLI builds against: a checkout of the OS repository, named explicitly.
+//!
+//! EVERYTHING the CLI reads from the OS is read here, and nowhere else. Each item below is a file the OS
+//! keeps for its own build, not yet a published developer contract, so this module is the stopgap seam:
+//! when the OS exports a fact publicly (the linker script through Cargo `links` metadata, a validator
+//! crate for contracts), the reading changes here and no command changes.
+//!
+//! Read, never written. The CLI does not modify the OS checkout.
+//!
+//! | fact | read from |
+//! |---|---|
+//! | OS version | `Cargo.toml`, `[workspace.package] version` |
+//! | toolchain pin and the targets the OS builds | `rust-toolchain.toml` |
+//! | per-target compiler flags | `.cargo/config.toml`, `[target.<triple>] rustflags` |
+//! | the service linker script | `services/user.ld` |
+//! | the service contract schema | `contracts/schema/service.schema.json` |
+//! | the stdlib crate exists, and is named `godspeed` | `stdlib/rust/Cargo.toml` |
+
+use crate::diag::{Diagnostic, Kind, Stage};
+use std::path::{Path, PathBuf};
+
+/// The environment variable naming the OS checkout, when `--os` is not given.
+pub const OS_ENV: &str = "GODSPEED_OS";
+
+/// The public repository the generated project's stdlib dependency points at.
+pub const OS_GIT_URL: &str = "https://github.com/godspeedhq/godspeed-os";
+
+#[derive(Debug, Clone)]
+pub struct Platform {
+    pub root: PathBuf,
+    pub version: String,
+    pub toolchain: String,
+    pub targets: Vec<String>,
+    pub linker_script: PathBuf,
+    pub schema: serde_json::Value,
+    config: toml::Table,
+}
+
+fn not_a_checkout(root: &Path, why: String) -> Diagnostic {
+    Diagnostic::new(
+        Kind::Environment,
+        Stage::Setup,
+        "use the GodspeedOS checkout",
+        format!("{} does not look like a GodspeedOS checkout: {why}", root.display()),
+    )
+    .expected("a clone of the GodspeedOS repository, e.g. `git clone https://github.com/godspeedhq/godspeed-os`")
+    .next(format!("Pass the clone's path with `--os <path>` or set {OS_ENV}."))
+}
+
+fn read_toml(root: &Path, rel: &str) -> Result<toml::Table, Diagnostic> {
+    let path = root.join(rel);
+    let text = std::fs::read_to_string(&path).map_err(|e| not_a_checkout(root, format!("cannot read {rel}: {e}")))?;
+    text.parse::<toml::Table>()
+        .map_err(|e| not_a_checkout(root, format!("{rel} is not valid TOML: {e}")))
+}
+
+impl Platform {
+    /// Locate the platform: `--os` wins, then the environment. There is no guessing - a CLI that
+    /// silently found "some" checkout would build against a version nobody chose.
+    pub fn locate(flag: Option<&Path>) -> Result<Platform, Diagnostic> {
+        let root = match flag {
+            Some(p) => p.to_path_buf(),
+            None => match std::env::var_os(OS_ENV) {
+                Some(v) if !v.is_empty() => PathBuf::from(v),
+                _ => {
+                    return Err(Diagnostic::new(
+                        Kind::Environment,
+                        Stage::Setup,
+                        "find GodspeedOS",
+                        "No GodspeedOS checkout was named. The CLI builds against the OS's own stdlib, \
+                         toolchain pin and contract schema, so it needs to know which OS version to use.",
+                    )
+                    .expected(format!("`--os <path>` or the {OS_ENV} environment variable"))
+                    .next(format!(
+                        "Clone {OS_GIT_URL}, then set {OS_ENV} to the clone's path.\n\
+                                       Run `godspeed doctor` to confirm the setup."
+                    )));
+                }
+            },
+        };
+        Self::open(&root)
+    }
+
+    pub fn open(root: &Path) -> Result<Platform, Diagnostic> {
+        if !root.is_dir() {
+            return Err(not_a_checkout(root, "the directory does not exist".into()));
+        }
+
+        let ws = read_toml(root, "Cargo.toml")?;
+        let version = ws
+            .get("workspace")
+            .and_then(|w| w.get("package"))
+            .and_then(|p| p.get("version"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| not_a_checkout(root, "Cargo.toml has no [workspace.package] version".into()))?
+            .to_string();
+
+        let stdlib = read_toml(root, "stdlib/rust/Cargo.toml")?;
+        let stdlib_name = stdlib
+            .get("package")
+            .and_then(|p| p.get("name"))
+            .and_then(|n| n.as_str());
+        if stdlib_name != Some("godspeed") {
+            return Err(not_a_checkout(
+                root,
+                "stdlib/rust/Cargo.toml is not the `godspeed` crate".into(),
+            ));
+        }
+
+        let pin = read_toml(root, "rust-toolchain.toml")?;
+        let tc = pin
+            .get("toolchain")
+            .ok_or_else(|| not_a_checkout(root, "rust-toolchain.toml has no [toolchain]".into()))?;
+        let toolchain = tc
+            .get("channel")
+            .and_then(|c| c.as_str())
+            .ok_or_else(|| not_a_checkout(root, "rust-toolchain.toml has no channel".into()))?
+            .to_string();
+        let targets = tc
+            .get("targets")
+            .and_then(|t| t.as_array())
+            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+
+        // Optional: an OS with no per-target flags is valid; it just has none to pass on.
+        let config = match std::fs::read_to_string(root.join(".cargo/config.toml")) {
+            Ok(text) => text
+                .parse::<toml::Table>()
+                .map_err(|e| not_a_checkout(root, format!(".cargo/config.toml is not valid TOML: {e}")))?,
+            Err(_) => toml::Table::new(),
+        };
+
+        let linker_script = root.join("services").join("user.ld");
+        if !linker_script.is_file() {
+            return Err(not_a_checkout(
+                root,
+                "services/user.ld (the service linker script) is missing".into(),
+            ));
+        }
+
+        let schema_path = root.join("contracts/schema/service.schema.json");
+        let schema_text = std::fs::read_to_string(&schema_path)
+            .map_err(|e| not_a_checkout(root, format!("cannot read the contract schema: {e}")))?;
+        let schema = serde_json::from_str(&schema_text)
+            .map_err(|e| not_a_checkout(root, format!("the contract schema is not valid JSON: {e}")))?;
+
+        Ok(Platform {
+            root: root.to_path_buf(),
+            version,
+            toolchain,
+            targets,
+            linker_script,
+            schema,
+            config,
+        })
+    }
+
+    /// The release tag for this OS version, which a generated project's stdlib dependency names.
+    pub fn tag(&self) -> String {
+        format!("v{}", self.version)
+    }
+
+    /// Does the OS build services for this target triple?
+    pub fn supports(&self, triple: &str) -> bool {
+        self.targets.iter().any(|t| t == triple)
+    }
+
+    /// The compiler flags the OS applies to every crate it builds for `triple`.
+    pub fn rustflags(&self, triple: &str) -> Vec<String> {
+        self.config
+            .get("target")
+            .and_then(|t| t.get(triple))
+            .and_then(|t| t.get("rustflags"))
+            .and_then(|f| f.as_array())
+            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default()
+    }
+
+    /// The pattern a service name must match, read from the schema so the CLI never keeps a second copy.
+    pub fn name_pattern(&self) -> Option<&str> {
+        self.schema.get("properties")?.get("name")?.get("pattern")?.as_str()
+    }
+}

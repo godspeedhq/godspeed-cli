@@ -1,0 +1,4 @@
+[package]
+name = "godspeed"
+version = "0.28.0"
+edition = "2021"

@@ -1,0 +1,11 @@
+[package]
+name = "{{name}}"
+version = "0.1.0"
+edition = "2021"
+description = "A Godspeed library"
+
+[lib]
+path = "src/lib.rs"
+
+# This project is its own workspace, wherever it is created.
+[workspace]

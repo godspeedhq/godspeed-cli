@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://godspeed.os/schemas/service/v1",
+  "title": "ServiceContract",
+  "description": "Structural schema for a GodspeedOS service contract (`<crate>/contracts/<name>.toml`). See 13. A contract is a build-time DECLARATION: the kernel never reads it, and authority comes from the supervisor's spawn request (13.6). NOTE (2026-09-12): this schema had drifted behind the contracts it validates - six shipped services could not pass `osdev validate` because `additionalProperties: false` met four keys the schema never declared (hw_pci_class, hw_pci_bar, hw_pci_irq, pci_cfg) and an `hw_device` enum that predated the move to class-based PCI resolution. Those are added/widened here, which is permissive and so stays within v1. Two DEAD keys are deliberately NOT removed - `hw_pio` (capability retired with ATA PIO) and `spawn` (init removed, Phase 5) - because removing a key NARROWS the schema, which 13.5 makes a major version bump with a documented migration. They are marked dead in place; the narrowing is a deliberate v2, tracked in backlog/fixed/20. NOTE (2026-09-24): `console_push` was missing for the same reason and found the same way - `scripts/contract_check.py` requires any crate printing through `godspeed::io` to declare it, while `additionalProperties: false` rejected it, so the worked example the published book teaches from could not pass `osdev validate`. Added here, which is permissive and stays within v1. It went unnoticed because `osdev validate` is not run by any of the enforcement scripts - it is a separate command, and a check nobody runs is a check that is not there. NOTE (2026-10-09): the rule that note cites was false and has been reversed. `godspeed::io` prints through ConsoleWrite, which the kernel gates on LOG_WRITE alone, so `contract_check.py` now requires `log_write` of a printer and FAILS a `console_push` declaration the code never uses (see `console_push` below). The key itself stays: it is a real privilege. `osdev validate` is still on no developer build path; only the paused, workflow_dispatch-only `build.yml` runs it.",
+  "type": "object",
+  "required": ["name", "version", "resources", "capabilities"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Service name. Stable identifier; used as the name-directory key."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "SemVer version string."
+    },
+    "resources": {
+      "type": "object",
+      "required": ["memory"],
+      "additionalProperties": false,
+      "properties": {
+        "memory": {
+          "type": "object",
+          "required": ["request", "limit"],
+          "additionalProperties": false,
+          "properties": {
+            "request": { "$ref": "#/$defs/memorySize" },
+            "limit":   { "$ref": "#/$defs/memorySize" }
+          }
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ipc_send": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "description": "Services this service may send IPC messages to. The send caps are minted from the spawn request's send peers; `scripts/contract_check.py` fails a service contract whose list differs from them."
+        },
+        "ipc_receive": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+          "description": "Endpoint names this service owns and may receive on."
+        },
+        "console_push": {
+   "type": "boolean",
+   "description": "Authority to push bytes into the console INPUT ring the shell reads as typed commands (privbits::CONSOLE_PUSH; 6.4 SEC-2) - the keyboard drivers' job. It is NOT needed to print: `godspeed::io` prints through ConsoleWrite, which the kernel gates on LOG_WRITE. Granted from the spawn request, like every other privilege; declared here because 13.6 makes the contract the reviewable statement of what a service may do. `scripts/contract_check.py` fails a declaration the crate's code never uses (no `console_push(` call), because an unused grant of keystroke authority is an over-grant."
+  },
+  "log_write": {
+          "type": "boolean",
+          "description": "Permission to write the kernel log: syscall 5, straight to the 16 KiB ring buffer and the serial console. NOT routed through any service - CLAUDE.md 11.4 (amendment 2026-09-04) exists to deny exactly that, so that observing a failure never depends on a service that can fail."
+        },
+        "service_control": {
+          "type": "boolean",
+          "description": "Authority to kill and restart services (privbits::SERVICE_CONTROL). Not supervisor-only: `control`, `shell` and `chaos` declare it too, and the supervisor grants it to them in their spawn rows. Reconciled against those grants by `IV-contract-authority` in scripts/commandments.py."
+        },
+        "spawn": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "DEAD KEY. `init` was removed in Path C / Phase 5 and no contract declares this; the SPAWN privilege is carried in the supervisor's spawn REQUEST, not declared by a contract. Kept only because removing a key narrows the schema, which 13.5 makes a major version bump - see the note at the foot of this file."
+        },
+        "hw_interrupt": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0, "maximum": 255 },
+          "description": "IRQ lines the service receives, stated for REVIEW only. Nothing grants from this key and no checker reconciles it: the kernel refuses raw interrupt vectors in a spawn request and routes the interrupt of the device CLASS the request names (12.3, 14.1 amendment 2026-09-26)."
+        },
+        "hw_mmio": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^0x[0-9a-fA-F]+\\+0x[0-9a-fA-F]+$" },
+          "description": "MMIO regions, base+size in hex, stated for REVIEW only. Nothing grants from this key and no checker reconciles it: the kernel refuses raw MMIO addresses in a spawn request and maps the window of the device class the request names (12.3, 14.1 amendment 2026-09-26)."
+        },
+        "hw_pio": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^0x[0-9a-fA-F]+\\+0x[0-9a-fA-F]+$" },
+          "description": "DEAD KEY. The ATA-PIO block backend and the `hw_pio` capability were retired with the move to AHCI; `hw_pio` exists nowhere in kernel/ or sdk/. A contract declaring it would validate here and be unhonourable at spawn. Kept pending the v2 narrowing - see the note at the foot of this file."
+        },
+        "hw_device": {
+          "type": "string",
+          "enum": ["ahci", "nic", "xhci", "ehci", "dwc2", "framebuffer", "test-irq", "audio_pwm", "wifi_sdio"],
+          "description": "A NON-PCI device kind, named because nothing enumerates it: an SoC or boot fact (`dwc2` is soldered to the BCM283x, `framebuffer` is a Limine/mailbox handoff, `test-irq` is software). Each name is a lowercased SDK `hwclass::` constant; the spawn request carries that constant's number, which the kernel decodes to a `HwClass` variant. Reconciled against the `hwclass::` the supervisor's spawn row names by scripts/contract_check.py (services/ only, not examples/). `test-irq` is spelled with a hyphen and so could never match `hwclass::TEST_IRQ`; no contract uses it. PCI devices do NOT belong here - they are named by what the bus says they are, via `hw_pci_class` below (step D1). `ahci` is retained only because removing an enum member narrows the schema (13.5); nothing uses it - block-driver is `hw_pci_class = \"010601\"` now."
+        },
+        "hw_pci_class": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{6}$",
+          "description": "ANY PCI device, named by the industry-standard 24-bit (class, subclass, prog-if) triple as six hex digits - e.g. \"010601\" AHCI, \"020000\" ethernet, \"0c0330\" xHCI. A driver for a device this kernel has never heard of needs NO kernel change: the supervisor puts the code in the spawn request and the PCI scan answers it. The runtime BAR ADDRESS is the one fact never written down (step D1)."
+        },
+        "hw_pci_bar": {
+          "description": "Which BAR holds this device's registers - an INDEX (xHCI 0, AHCI 5), never an address - or \"auto\" for the first mapped MEMORY BAR. Belongs to the DRIVER, not the bus, which is why the contract states it.",
+          "oneOf": [
+            { "type": "integer", "minimum": 0, "maximum": 5 },
+            { "type": "string", "enum": ["auto"] }
+          ]
+        },
+        "hw_pci_irq": {
+          "type": "boolean",
+          "description": "This driver takes an interrupt, so the kernel allocates a vector and programs MSI/MSI-X at spawn. Without it the driver polls. Reconciled against the supervisor's spawn row: a contract that stops declaring it while the row still asks for a vector is a FAIL, not a silent downgrade."
+        },
+        "cpu_clock": {
+          "type": "boolean",
+          "description": "Authority to set the Arm cores to the platform's minimum or maximum clock (syscall 55). Held by `power` alone, because the clock is one machine-wide setting and a second holder would silently overwrite the first; everyone else asks `power` for a lease over IPC (docs/power.md)."
+        },
+        "power_off": {
+          "type": "boolean",
+          "description": "Authority to turn the machine off, or to halt every core where the hardware cannot cut its own power (syscall 56). Held by `power` alone, because the machine has one power state; everyone else asks `power` (docs/shutdown.md)."
+        },
+        "pci_cfg": {
+          "type": "boolean",
+          "description": "Authority to READ PCI configuration space (syscall 53). Held by `hw-enumerator` alone: the kernel keeps the privileged access (x86 port I/O, the Pi 4's memory-mapped INDEX/DATA window, riscv64's flat ECAM window) and this service owns what the read MEANS - which is how bus enumeration left the kernel (step D2)."
+        },
+        "resource_mint": {
+          "type": "boolean",
+          "description": "Authority to mint delegated resource capabilities - a file for fs, a socket for net-stack (§7.10, file-as-capability). Gated: granted only to services that legitimately issue resources."
+        }
+      }
+    },
+    "placement": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "core": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 15,
+          "description": "Required core ID (§9.2). Omit for round-robin."
+        }
+      }
+    }
+  },
+  "$defs": {
+    "memorySize": {
+      "type": "string",
+      "pattern": "^\\d+(KiB|MiB|GiB)$",
+      "description": "Memory size with unit, e.g. 32MiB."
+    }
+  }
+}

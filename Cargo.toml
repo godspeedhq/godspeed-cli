@@ -1,0 +1,23 @@
+[package]
+name = "godspeed-cli"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-2.0-only"
+description = "Developer CLI for GodspeedOS: create, check, build and (later) package and publish Godspeed projects"
+rust-version = "1.80"
+
+[[bin]]
+name = "godspeed"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+# The same validator, at the same version, that the OS's `osdev validate` uses, so a contract gets the
+# same verdict here as there. When the OS publishes its validator crate this dependency goes away.
+jsonschema = { version = "0.18", default-features = false }
+
+[profile.release]
+strip = true

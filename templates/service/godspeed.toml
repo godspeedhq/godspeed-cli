@@ -1,0 +1,5 @@
+# Godspeed project manifest. It says what kind of project this is and where its contract is.
+# Name, version and the authority the service requests live in the contract, not here.
+format   = 1
+kind     = "service"
+contract = "contracts/{{name}}.toml"
