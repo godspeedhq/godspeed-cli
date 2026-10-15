@@ -29,7 +29,7 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
-#[cfg(any(test, feature = "toml"))]
+#[cfg(any(test, feature = "std"))]
 extern crate std;
 
 mod arch;
@@ -41,6 +41,7 @@ mod name;
 mod sign;
 #[cfg(feature = "toml")]
 mod text;
+pub mod trust;
 mod verify;
 mod version;
 

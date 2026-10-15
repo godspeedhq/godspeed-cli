@@ -11,7 +11,9 @@ rust-version = "1.80"
 [features]
 default = []
 # Read and write the TOML manifest. Host-only: it needs std and a heap. The core of the crate never does.
-toml = ["dep:serde", "dep:toml"]
+toml = ["std", "dep:serde", "dep:toml"]
+# Writing and signing trust metadata (the maintainer's tool, the registry). Needs std and a heap.
+std = []
 
 [dependencies]
 # `force-soft`: the portable implementation. The x86 SIMD path cannot build for `x86_64-unknown-none` (no
