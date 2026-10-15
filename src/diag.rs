@@ -59,6 +59,8 @@ pub enum Kind {
     InvalidPackage,
     /// A package's bytes are not the ones its manifest names: a size or checksum mismatch.
     IntegrityFailure,
+    /// A signature is malformed, or does not verify: the named key did not sign this manifest.
+    SignatureFailure,
     /// The registry does not accept these credentials: none, unknown, revoked or expired.
     AuthenticationFailure,
     /// The registry could not be reached, or failed, before anything was decided.
@@ -98,6 +100,7 @@ impl Kind {
             Kind::PermissionDenied => 23,
             Kind::Conflict => 24,
             Kind::OutcomeUnknown => 25,
+            Kind::SignatureFailure => 26,
             Kind::Io => 30,
         }
     }
@@ -234,6 +237,7 @@ mod tests {
             Kind::TestFailure,
             Kind::InvalidPackage,
             Kind::IntegrityFailure,
+            Kind::SignatureFailure,
             Kind::AuthenticationFailure,
             Kind::RegistryUnavailable,
             Kind::PermissionDenied,

@@ -17,5 +17,7 @@ toml = ["dep:serde", "dep:toml"]
 # `force-soft`: the portable implementation. The x86 SIMD path cannot build for `x86_64-unknown-none` (no
 # SSE; it crashes rustc), and the native package manager runs on exactly that kind of target.
 sha2 = { version = "0.10", default-features = false, features = ["force-soft"] }
+# Publisher signatures. No default features: no std, no alloc, no randomness (keys are made by the caller).
+ed25519-dalek = { version = "2", default-features = false, features = ["zeroize"] }
 serde = { version = "1", features = ["derive"], optional = true }
 toml = { version = "0.8", optional = true }

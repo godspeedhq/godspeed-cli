@@ -9,6 +9,9 @@
 //! - **The core** - names, versions, architectures, digests, the manifest model, its validation, and
 //!   streaming artifact verification - is `no_std` and never allocates. The native package manager runs on
 //!   Godspeed, under the OS's no-heap rule, and must be able to use all of it.
+//!   Building for `x86_64-unknown-none` (or any x86_64 target without SSE) needs
+//!   `--cfg curve25519_dalek_backend="serial"` in RUSTFLAGS: the Ed25519 library otherwise picks a SIMD
+//!   backend that target cannot compile, and offers no Cargo feature to choose. Other targets need nothing.
 //! - **The `toml` feature** reads and writes the manifest's text form. It needs `std` and a heap, so it is
 //!   host-only. (How the native side will read the text without a heap is an open question; see the
 //!   format document.)
@@ -18,9 +21,9 @@
 //! - **Authority.** A package carries its OS service contract, which REQUESTS capabilities. Nothing here
 //!   grants anything, and nothing here restates the contract's capabilities: the manifest binds the
 //!   contract by digest, so there is one declaration of a service's authority, not two.
-//! - **Trust.** A digest proves bytes are the ones the manifest names. It says nothing about who made
-//!   them or whether they are safe. Publisher signatures and the registry's trust model are not designed
-//!   yet, and nothing here pretends otherwise.
+//! - **Trust.** A digest proves bytes are the ones the manifest names. A signature (`manifest.sig`) proves
+//!   which key signed the manifest. Neither says who holds the key - that is the registry's trust model -
+//!   nor whether the package is safe.
 
 #![no_std]
 #![forbid(unsafe_code)]
@@ -31,9 +34,11 @@ extern crate std;
 
 mod arch;
 mod digest;
+mod hex;
 mod index;
 mod manifest;
 mod name;
+mod sign;
 #[cfg(feature = "toml")]
 mod text;
 mod verify;
@@ -46,6 +51,10 @@ pub use index::{index_to_toml, parse_index, OwnedPackageIndex};
 pub use index::{is_timestamp, PackageIndex, Release, INDEX_FORMAT};
 pub use manifest::{Artifact, Kind, Manifest, Problem, ProblemKind, CONTRACT_FILE, FORMAT, MAX_ARTIFACT_SIZE};
 pub use name::{NameError, PackageName, PART_MAX};
+pub use sign::{
+    signed_message, ManifestSignature, PublicKey, Signature, SignatureError, MANIFEST_CONTEXT, SIGNATURE_FILE,
+    SIGNATURE_FORMAT,
+};
 #[cfg(feature = "toml")]
 pub use text::{parse, to_toml, OwnedManifest, ParseError};
 pub use verify::{ArtifactVerifier, VerifyError};

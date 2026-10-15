@@ -342,6 +342,18 @@ pub fn refused(doing: &str, registry: &str, r: &Refusal) -> Diagnostic {
              disagree about the package format."
                 .into(),
         ),
+        "signature-invalid" => (
+            Kind::SignatureFailure,
+            Stage::Upload,
+            "Sign the package again (`godspeed publish` does) and retry; if it persists, report it.".into(),
+        ),
+        "key-not-registered" => (
+            Kind::PermissionDenied,
+            Stage::Authentication,
+            "Send your public key (`godspeed key show`) to the registry maintainer to register for this namespace, \
+             then publish again."
+                .into(),
+        ),
         "size-mismatch" | "digest-mismatch" => (
             Kind::IntegrityFailure,
             Stage::Upload,

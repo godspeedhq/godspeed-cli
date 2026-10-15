@@ -1,7 +1,7 @@
 # The Godspeed package format, version 1
 
-**Status: DRAFT. Implemented by `crates/godspeed-package`; `godspeed package` produces packages and
-`godspeed verify` checks them. Nothing installs them yet, and nothing here is a promise until the first
+**Status: DRAFT. Implemented by `crates/godspeed-package`; `godspeed package` produces packages,
+`godspeed sign` signs them and `godspeed verify` checks them. Nothing installs them yet, and nothing here is a promise until the first
 package is published.**
 
 A package is one version of one Godspeed program, as files that can be inspected and verified without the
@@ -17,6 +17,8 @@ One directory, or one registry prefix, holding exactly these files:
 
     manifest.toml       what the package is: name, version, the OS release it was built against, and
                         the size and digest of every other file
+    manifest.sig        the publisher's signature over manifest.toml (section 4a); optional in a
+                        local package, required by the registry
     contract.toml       the OS service contract: the authority the service REQUESTS
     x86_64.elf          one binary per architecture the package supports,
     aarch64.elf         named by the architecture - never by the manifest
@@ -75,8 +77,8 @@ Reading is strict. An unknown key is an error, not ignored: a reader that skippe
 understand would install a package on the strength of half its manifest. Every problem is reported in one
 pass.
 
-Writing is canonical: the fields in the order above, one text form per manifest. Nothing signs a manifest
-yet, but when something does, two spellings of one manifest would be two different things to sign.
+Writing is canonical: the fields in the order above, one text form per manifest. A signature covers the
+manifest's exact bytes, so two spellings of one manifest would be two different things to sign.
 
 ### The package name and the service name
 
@@ -92,11 +94,12 @@ manager's question, and is not answered here.
   (13.6) was amended to stop. A manifest that tries to carry capabilities is refused as an unknown key.
 - **Grants.** Nothing in a package grants anything. Installing a package must never turn what its contract
   requests into what it is given; the OS decides, and the decision is visible.
-- **Publisher identity and signatures.** A digest proves that bytes are the ones the manifest names. It
-  does not prove who wrote the manifest. Who published a release is the registry's record; which key
-  signed it is a signature's job; neither is designed yet. The Update Framework (TUF) is the reference for
-  that design, because signatures on artifacts are not enough if the index or a publisher's key can be
-  swapped unnoticed.
+- **Signatures.** The signature is a separate file (`manifest.sig`), not a manifest field: a manifest
+  cannot contain a signature over itself, and keeping it outside means the manifest's bytes - and its
+  digest in the index - are the same signed or unsigned.
+- **Publisher identity.** A signature proves which KEY signed. Which publisher a key belongs to is not in
+  the package at all: it is the registry's trust model (`docs/publishing-design.md` section 6), because a
+  package that vouched for its own key would vouch for nothing.
 - **Dependencies.** A service has no runtime dependency mechanism on Godspeed, so format 1 has no
   dependency field rather than an unenforceable one.
 - **API compatibility.** `os.release` records what the package was built against. It is not a claim that
@@ -138,6 +141,27 @@ The digests must equal the manifest's, after its `sha256:` prefix. `godspeed ver
 also refuses any file the manifest does not name, and checks that each `<arch>.elf` is an ELF for that
 architecture - a mistake a digest cannot catch, since it binds whatever bytes the packager wrote.
 
+## 4a. The signature: `manifest.sig`
+
+Exactly three lines, and nothing else:
+
+    format = 1
+    key = "ed25519:<64 lowercase hex digits: the Ed25519 public key>"
+    signature = "ed25519:<128 lowercase hex digits>"
+
+- **What is signed:** the purpose tag `godspeed manifest signature v1` and a newline (31 bytes), then
+  the 32-byte SHA-256 of `manifest.toml`'s exact bytes - 63 bytes in all. The tag means a manifest
+  signature can never be presented as a signature over anything else the registry signs; signing the
+  digest keeps the message fixed-size, so verification needs no heap.
+- **Verification is strict** (Ed25519 `verify_strict`): malleable signatures and weak keys are refused.
+- **Reading is exact:** the file is compared against its canonical form rather than parsed as TOML - no
+  comments, no extra spaces, LF line endings, one final newline. A reader on a Godspeed machine needs no
+  TOML parser for it, and a signature file has one spelling.
+- **A signature proves which key, not whose.** `godspeed verify` reports the key and says so.
+
+Signing with your own tools: `sha256(manifest.toml)` appended to the tag, signed with Ed25519, written in
+the form above. `godspeed sign <dir>` does it with your key (`godspeed key generate`).
+
 ## 5. Compatibility policy
 
 - **`format` is the whole compatibility story.** A reader refuses a format it does not know, with a message
@@ -158,8 +182,9 @@ These are recorded, not answered:
 1. **How the native side reads the text without a heap.** The core types and validation are `no_std` and
    allocation-free; the TOML parser is not. Either a bounded TOML-subset reader for exactly this format,
    or a canonical binary encoding beside the text. Decided when the native package manager is.
-2. **Trust in the manifest**: signatures, key registration and rotation, and the index's own integrity
-   (TUF).
+2. **Trust in the manifest**: signatures exist (section 4a). Still open: binding a key to a publisher in
+   metadata the registry cannot alter, and the index's own integrity - TUF's root, snapshot and timestamp
+   roles (`docs/publishing-design.md` section 6).
 3. **What `os.release` permits on install**: exact match only, or a range, once the OS has an API version.
 4. **Two publishers, one service name** on one machine (section 2).
 5. **Library packages**: whether, and how, a library is distributed at all.

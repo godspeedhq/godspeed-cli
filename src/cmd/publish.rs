@@ -50,7 +50,8 @@ fn published(name: &str, version: Version, when: &str, already: bool) {
     }
     println!("Install, on a Godspeed machine:");
     println!("  godspeed install {name}");
-    println!("The registry verified every file. The release is not signed: packages are not signed yet.");
+    println!("The registry verified every file and your signature. Its trust anchor (signed root and index metadata)");
+    println!("is not built yet, so a client cannot yet check that your key is the one registered for your namespace.");
 }
 
 pub fn run(platform: &Platform, project: &Project, registry_flag: Option<&str>) -> Result<()> {
@@ -59,10 +60,13 @@ pub fn run(platform: &Platform, project: &Project, registry_flag: Option<&str>) 
     let url = registry::resolve(registry_flag, &creds)?;
     let (token, _) = registry::token(&url, &creds)?;
     let client = Client::new(&url, Some(token));
+    let key = crate::signing::load()?;
 
     // Validate, build every architecture, package, verify (package::run reports each step).
     let arches = build::select(platform, None, true)?;
     let dir = package::run(platform, project, &arches, None)?;
+    eprintln!("Signing with {}...", key.public);
+    super::sign::sign_dir(&dir, &key)?;
     let manifest_bytes =
         std::fs::read(dir.join(super::verify::MANIFEST_FILE)).map_err(|e| Diagnostic::io("publish", &dir, &e))?;
     let owned = pkg::parse(std::str::from_utf8(&manifest_bytes).unwrap_or_default())

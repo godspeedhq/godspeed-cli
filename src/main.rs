@@ -12,6 +12,7 @@ mod diag;
 mod platform;
 mod project;
 mod registry;
+mod signing;
 mod target;
 
 use clap::{Parser, Subcommand};
@@ -76,6 +77,16 @@ enum Command {
         #[arg(long, value_name = "PATH")]
         out: Option<PathBuf>,
     },
+    /// Sign a package directory with your signing key (`publish` signs for you)
+    Sign {
+        /// The package directory
+        path: PathBuf,
+    },
+    /// Make or show your signing key
+    Key {
+        #[command(subcommand)]
+        action: KeyAction,
+    },
     /// Verify a package directory against its manifest (needs no OS checkout)
     Verify {
         /// The package directory
@@ -124,6 +135,14 @@ enum Command {
         #[arg(trailing_var_arg = true)]
         _rest: Vec<String>,
     },
+}
+
+#[derive(Subcommand)]
+enum KeyAction {
+    /// Make a new signing key (never replaces an existing one)
+    Generate,
+    /// Print your public key, to give to the registry maintainer
+    Show,
 }
 
 fn current_project() -> Result<Project, Diagnostic> {
@@ -202,6 +221,11 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
             println!("Packaged in {}", dir.display());
             Ok(())
         }
+        Command::Sign { path } => cmd::sign::run(&path),
+        Command::Key { action } => match action {
+            KeyAction::Generate => cmd::sign::key_generate(),
+            KeyAction::Show => cmd::sign::key_show(),
+        },
         Command::Verify { path } => {
             let verified = cmd::verify::run(&path)?;
             cmd::verify::report(&verified);

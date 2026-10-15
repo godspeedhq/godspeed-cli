@@ -185,15 +185,38 @@ What each defends against:
 - **A compromised Worker**: it can withhold or delay releases, but cannot forge a publisher's signature, so
   it cannot ship code under someone else's name.
 
-**Publisher keys** are Ed25519. `godspeed login` generates one on first use, keeps the private half in the
-credential store, and registers the public half with the API; the maintainer adds it to root metadata
-(phase 1, by hand). Rotation: register the new key, the root lists both, then retires the old. Revocation:
-the root drops it; releases signed only by it stop verifying at the next refresh. **Signing keys are never
-in a package, a log line, or a repository.**
+**Publisher keys** are Ed25519. **Signing keys are never in a package, a log line, or a repository.**
 
-What the format needs from this: a signature file per version (`manifest.sig`) beside the manifest, and the
-package crate gaining Ed25519 verification (`no_std`, e.g. `ed25519-dalek` without `alloc`). Neither
-changes the manifest; format 1 stays format 1.
+### Slice 1 - built (2026-10-15): publisher signatures
+
+- `godspeed key generate` makes a key on the publisher's machine and stores the secret half in the
+  configuration directory, readable by the user alone (`GODSPEED_SIGNING_KEY` replaces it in CI, never
+  stored). Only the public half is ever sent anywhere: the publisher gives it to the maintainer.
+- The maintainer registers it for a namespace (`scripts/admin.mjs add-key` in `godspeed-registry`).
+- Every release carries `manifest.sig` (`docs/package-format.md` section 4a). `godspeed publish` signs; the
+  registry refuses a release whose signature does not verify (`signature-invalid`) or whose key is not
+  registered and unrevoked for the namespace (`key-not-registered`) - checked on upload and again at
+  finalisation, so a key revoked mid-publish cannot finish one. `manifest.sig` is published beside the
+  manifest.
+- Revoking a key (`admin.mjs revoke-key`) stops it signing anything new. It never alters a published release:
+  those bytes, signature included, stay exactly as published.
+
+**What slice 1 does not yet defend against:** the binding of a key to a namespace lives in the registry's
+own database. A client can check that a release is signed, and by which key, but not - from anything the
+registry cannot alter - that the key is the one registered for that publisher. A compromised registry could
+register its own key and sign a release in Alice's name. Slice 2 closes this.
+
+### Slice 2 - next: the trust anchor
+
+Root metadata listing each namespace's keys, signed offline by the root keys, so the registry cannot change
+it; snapshot and timestamp signed online by the Worker, for freshness and against rollback; and client-side
+verification of all of it in the package crate, `no_std`.
+
+**Open decision for the maintainer: what revoking a key means for releases it already signed.** Rotating a
+key (retiring it routinely) and revoking it after a compromise call for different answers - after a
+rotation, old releases are as trustworthy as ever; after a compromise, anything it signed may be suspect.
+TUF expresses either through what root metadata lists; slice 2 needs the choice made (both kinds of
+removal, distinguished, is the likely shape).
 
 **Recommendation: implement the TUF roles and file formats directly from the specification, scoped to
 these four roles, rather than adopting a full TUF library.** The native package manager must verify

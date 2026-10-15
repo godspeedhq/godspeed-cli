@@ -31,6 +31,7 @@ fn command(dir: &Path, os: Option<&Path>, args: &[&str]) -> Command {
         .env_remove("GODSPEED_OS")
         .env_remove("GODSPEED_REGISTRY")
         .env_remove("GODSPEED_TOKEN")
+        .env_remove("GODSPEED_SIGNING_KEY")
         .env("GODSPEED_CONFIG_DIR", dir.join(".godspeed-config"));
     if let Some(os) = os {
         c.arg("--os").arg(os);
@@ -369,6 +370,94 @@ fn verify(dir: &Path) -> Output {
     godspeed(dir.parent().unwrap(), None, &["verify", dir.to_str().unwrap()])
 }
 
+// ---- signing ----
+
+/// A signing key's secret seed, for tests only.
+const TEST_SEED: &str = "0707070707070707070707070707070707070707070707070707070707070707";
+
+#[test]
+fn key_generate_shows_the_public_half_and_never_replaces_a_key() {
+    let dir = scratch("keys");
+    let o = godspeed(&dir, None, &["key", "show"]);
+    assert_eq!(code(&o), 11, "no key yet: {}", stderr(&o));
+    assert!(stderr(&o).contains("godspeed key generate"), "{}", stderr(&o));
+
+    let o = godspeed(&dir, None, &["key", "generate"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    let out = String::from_utf8_lossy(&o.stdout).into_owned();
+    let o = godspeed(&dir, None, &["key", "show"]);
+    let public = String::from_utf8_lossy(&o.stdout).trim().to_string();
+    assert!(public.starts_with("ed25519:") && public.len() == 8 + 64, "{public}");
+    assert!(out.contains(&public), "generate prints the public key: {out}");
+
+    let stored = std::fs::read_to_string(dir.join(".godspeed-config/signing-key.toml")).unwrap();
+    let o = godspeed(&dir, None, &["key", "generate"]);
+    assert_eq!(code(&o), 24, "{}", stderr(&o));
+    assert_eq!(
+        std::fs::read_to_string(dir.join(".godspeed-config/signing-key.toml")).unwrap(),
+        stored,
+        "unchanged"
+    );
+}
+
+#[test]
+fn sign_then_verify_names_the_key_and_any_change_breaks_the_signature() {
+    let dir = write_package("sign_verify");
+    let o = verify(&dir);
+    assert_eq!(code(&o), 0);
+    assert!(
+        String::from_utf8_lossy(&o.stdout).contains("(not signed)"),
+        "an unsigned package says so"
+    );
+
+    let mut c = command(dir.parent().unwrap(), None, &["sign", dir.to_str().unwrap()]);
+    let o = c.env("GODSPEED_SIGNING_KEY", TEST_SEED).output().unwrap();
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    let o = verify(&dir);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    let out = String::from_utf8_lossy(&o.stdout).into_owned();
+    assert!(
+        out.contains("manifest.sig") && out.contains("signed by ed25519:"),
+        "{out}"
+    );
+    assert!(
+        out.contains("is the registry's to establish"),
+        "a signature is not presented as identity: {out}"
+    );
+
+    // The manifest edited after signing: the signature no longer covers it.
+    let manifest = std::fs::read_to_string(dir.join("manifest.toml")).unwrap();
+    std::fs::write(
+        dir.join("manifest.toml"),
+        manifest.replace("Says hello", "Says goodbye"),
+    )
+    .unwrap();
+    let o = verify(&dir);
+    assert_eq!(code(&o), 26, "{}", stderr(&o));
+    assert!(
+        stderr(&o).contains("this key did not sign this manifest"),
+        "{}",
+        stderr(&o)
+    );
+    std::fs::write(dir.join("manifest.toml"), &manifest).unwrap();
+
+    // The signature file itself altered.
+    let sig = std::fs::read_to_string(dir.join("manifest.sig")).unwrap();
+    std::fs::write(dir.join("manifest.sig"), sig.replace("format = 1", "format = 1 ")).unwrap();
+    let o = verify(&dir);
+    assert_eq!(code(&o), 26, "{}", stderr(&o));
+    assert!(stderr(&o).contains("canonical form"), "{}", stderr(&o));
+}
+
+#[test]
+fn a_bad_signing_key_in_the_environment_is_refused() {
+    let dir = write_package("bad_seed");
+    let mut c = command(dir.parent().unwrap(), None, &["sign", dir.to_str().unwrap()]);
+    let o = c.env("GODSPEED_SIGNING_KEY", "not-hex").output().unwrap();
+    assert_eq!(code(&o), 11, "{}", stderr(&o));
+    assert!(!dir.join("manifest.sig").exists());
+}
+
 #[test]
 fn verify_accepts_a_good_package_without_an_os_checkout() {
     let dir = write_package("verify_good");
@@ -381,8 +470,8 @@ fn verify_accepts_a_good_package_without_an_os_checkout() {
     );
     assert!(out.contains("requests: log_write"), "{out}");
     assert!(
-        out.contains("not signed yet"),
-        "the output must not imply more than integrity: {out}"
+        out.contains("Nothing says who made them: the package is") && out.contains("not signed"),
+        "an unsigned package must not imply more than integrity: {out}"
     );
 }
 

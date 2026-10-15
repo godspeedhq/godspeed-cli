@@ -21,7 +21,7 @@ fn replaceable(dir: &Path) -> bool {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return !dir.exists();
     };
-    let allowed: Vec<&str> = [verify::MANIFEST_FILE, CONTRACT_FILE]
+    let allowed: Vec<&str> = [verify::MANIFEST_FILE, CONTRACT_FILE, pkg::SIGNATURE_FILE]
         .into_iter()
         .chain(pkg::Arch::ALL.iter().map(|a| a.artifact_file()))
         .collect();

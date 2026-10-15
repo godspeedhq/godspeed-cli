@@ -1,12 +1,16 @@
 //! `godspeed verify <dir>`: check a package directory against its own manifest.
 //!
 //! Needs no OS checkout, no network and no project: a package is checkable by anyone holding its files.
-//! It establishes INTEGRITY - these files are exactly the ones the manifest names - and nothing more.
-//! Who published the package is not checked, because nothing signs packages yet, and the output says so.
+//! It establishes INTEGRITY - these files are exactly the ones the manifest names - and, when the package
+//! carries `manifest.sig`, which KEY signed the manifest. Whether that key belongs to the publisher is the
+//! registry's to establish, not a file's, and the output says so.
 
 use crate::diag::{Diagnostic, Kind, Result, Stage};
 use crate::target;
-use godspeed_package::{self as pkg, ArtifactVerifier, OwnedManifest, ParseError, Sha256Digest, CONTRACT_FILE};
+use godspeed_package::{
+    self as pkg, ArtifactVerifier, ManifestSignature, OwnedManifest, ParseError, PublicKey, Sha256Digest,
+    CONTRACT_FILE, SIGNATURE_FILE,
+};
 use std::collections::BTreeSet;
 use std::io::Read;
 use std::path::Path;
@@ -17,6 +21,8 @@ pub const MANIFEST_FILE: &str = "manifest.toml";
 pub struct Verified {
     pub manifest: OwnedManifest,
     pub requests: Vec<String>,
+    /// The key that signed the manifest, if the package is signed.
+    pub signed_by: Option<PublicKey>,
 }
 
 fn invalid(dir: &Path, reason: String) -> Diagnostic {
@@ -97,8 +103,33 @@ pub fn run(dir: &Path) -> Result<Verified> {
     };
     let manifest = owned.manifest();
 
-    // 2. Exactly the files the manifest names: nothing missing, nothing extra.
+    // 2. The signature, if there is one: it must cover these exact manifest bytes.
+    let spath = dir.join(SIGNATURE_FILE);
+    let mut signed_by = None;
+    if spath.exists() {
+        let bad = |why: String| {
+            Diagnostic::new(
+                Kind::SignatureFailure,
+                Stage::Verification,
+                format!("verify the package in {}", dir.display()),
+                why,
+            )
+            .next("Do not install or publish this package. Sign it again (`godspeed sign`), or obtain it again.")
+        };
+        match std::fs::read_to_string(&spath) {
+            Err(e) => problems.push(bad(format!("{SIGNATURE_FILE} cannot be read: {e}"))),
+            Ok(t) => match ManifestSignature::parse(&t).and_then(|s| s.verify(text.as_bytes()).map(|()| s.key)) {
+                Ok(key) => signed_by = Some(key),
+                Err(e) => problems.push(bad(format!("{SIGNATURE_FILE}: {e}."))),
+            },
+        }
+    }
+
+    // 3. Exactly the files the manifest names: nothing missing, nothing extra.
     let mut expected: BTreeSet<String> = [MANIFEST_FILE, CONTRACT_FILE].iter().map(|s| s.to_string()).collect();
+    if spath.exists() {
+        expected.insert(SIGNATURE_FILE.to_string());
+    }
     for a in manifest.artifacts {
         expected.insert(a.arch.artifact_file().to_string());
     }
@@ -117,7 +148,7 @@ pub fn run(dir: &Path) -> Result<Verified> {
         Err(e) => return Err(Diagnostic::io("verify the package", dir, &e).into()),
     }
 
-    // 3. The contract: its bytes, then its name and version against the manifest's.
+    // 4. The contract: its bytes, then its name and version against the manifest's.
     let cpath = dir.join(CONTRACT_FILE);
     let mut contract_requests = Vec::new();
     match std::fs::read(&cpath) {
@@ -151,7 +182,7 @@ pub fn run(dir: &Path) -> Result<Verified> {
         }
     }
 
-    // 4. Each artifact: streamed against its declared size and digest, then checked to be an ELF for the
+    // 5. Each artifact: streamed against its declared size and digest, then checked to be an ELF for the
     //    architecture it is filed under.
     for a in manifest.artifacts {
         let file = a.arch.artifact_file();
@@ -183,10 +214,16 @@ pub fn run(dir: &Path) -> Result<Verified> {
         Ok(Verified {
             manifest: owned,
             requests: contract_requests,
+            signed_by,
         })
     } else {
-        // An integrity failure is the decision-relevant one, so it leads and sets the exit code.
-        problems.sort_by_key(|d| d.kind != Kind::IntegrityFailure);
+        // Tampering is the decision-relevant finding, so it leads and sets the exit code: altered bytes
+        // first, then a signature that does not hold, then anything malformed.
+        problems.sort_by_key(|d| match d.kind {
+            Kind::IntegrityFailure => 0,
+            Kind::SignatureFailure => 1,
+            _ => 2,
+        });
         Err(problems)
     }
 }
@@ -219,6 +256,17 @@ pub fn report(v: &Verified) {
             a.digest
         );
     }
-    println!("Integrity only: these files are exactly the ones the manifest names. Who published them is not");
-    println!("verified (packages are not signed yet), and what the contract requests is not granted by installing it.");
+    match &v.signed_by {
+        Some(key) => {
+            println!("  {:<14} {:>10}  signed by {key}", SIGNATURE_FILE, "");
+            println!("These files are exactly the ones the manifest names, and that key signed it. Whether the key is");
+            println!("{}'s is the registry's to establish, not a file's.", m.name.publisher());
+        }
+        None => {
+            println!("  (not signed)");
+            println!("These files are exactly the ones the manifest names. Nothing says who made them: the package is");
+            println!("not signed.");
+        }
+    }
+    println!("What the contract requests is not granted by installing it.");
 }

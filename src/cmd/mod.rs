@@ -5,6 +5,7 @@ pub mod doctor;
 pub mod new;
 pub mod package;
 pub mod publish;
+pub mod sign;
 pub mod test;
 pub mod unavailable;
 pub mod verify;

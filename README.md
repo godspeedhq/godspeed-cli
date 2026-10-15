@@ -75,6 +75,8 @@ the installers' `releases/latest` never resolves to a draft.
 | `package [--arch <isa>] [--out <dir>]` | works: builds every architecture, writes a package directory, and verifies it from disk before reporting it |
 | `verify <dir>` | works, with no OS checkout: checks every file against the manifest, and says it proves integrity only |
 | `run` | refused: GodspeedOS has no public way to run a service built outside its tree |
+| `key generate`, `key show` | work: an Ed25519 signing key, made and kept on this machine; only the public half is ever shared |
+| `sign <dir>` | works: signs a package directory (`manifest.sig`) and verifies the result; `publish` does it for you |
 | `login`, `whoami`, `logout` | work: a publisher token for a registry, checked with it before it is stored; `logout` revokes it there |
 | `publish` | works: packages every architecture, then reserves, uploads and finalises; if finalising gets no answer it reads the registry's index and reports what it finds, and running it again is always safe |
 | `install`, `search`, `info`, `list`, `update`, `uninstall` | belong to the native package manager on a Godspeed machine, and say so |
@@ -95,6 +97,7 @@ The contract grants nothing. What a service is actually given is the operating s
 
 ## Publishing
 
+    godspeed key generate              # once; send the PUBLIC key it prints to the registry maintainer
     godspeed login --registry <url>    # paste the token the registry maintainer issued you
     godspeed whoami
     godspeed publish                   # needs publisher = "<you>" in godspeed.toml
@@ -103,7 +106,14 @@ The registry is the `godspeed-registry` service; there is no default until the o
 so name it with `--registry`, `GODSPEED_REGISTRY`, or once with `login`. `login` stores the token in
 `~/.config/godspeed/credentials.toml` (`%APPDATA%\godspeed` on Windows), readable by you alone; in CI, set
 `GODSPEED_TOKEN` instead and nothing is stored. The CLI holds a publisher token only - never storage
-credentials. Published releases are verified by the registry but not signed: signing is not built yet.
+credentials.
+
+Every release is signed with your key (`manifest.sig`), and the registry refuses one that is not signed by a
+key registered for your namespace. Your secret key stays in `signing-key.toml` beside the credentials,
+readable by you alone - back it up; in CI, set `GODSPEED_SIGNING_KEY` instead. A signature proves which key
+signed; that the key is the one registered for a publisher is, for now, the registry's own record - the
+signed trust anchor that lets clients check it independently is the next step
+([docs/publishing-design.md](docs/publishing-design.md), section 6).
 
 ## The package contract
 
@@ -138,6 +148,7 @@ Scripts and CI can tell failures apart without reading the text:
 | 23 | permission denied: the namespace is not yours |
 | 24 | conflict: the version is already published, or being published |
 | 25 | outcome unknown: finalising got no answer and the index does not show it yet - run `publish` again |
+| 26 | signature failure: a signature is malformed, or the named key did not sign this manifest |
 | 30 | a local file could not be read or written |
 
 ## Development

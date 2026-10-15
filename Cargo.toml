@@ -25,6 +25,8 @@ godspeed-package = { path = "crates/godspeed-package", version = "0.1.0", featur
 ureq = { version = "2.12", default-features = false, features = ["tls", "json"] }
 # Reads a token from the terminal without echoing it.
 rpassword = "7"
+# The operating system's random source, for making signing keys. (Already in the tree, through ring.)
+getrandom = "0.2"
 
 [profile.release]
 strip = true

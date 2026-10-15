@@ -68,10 +68,15 @@ jobs:
         run: |
           targets="x86_64-unknown-none aarch64-unknown-none armv7a-none-eabi riscv64imac-unknown-none-elf"
           rustup target add $targets
+          # curve25519-dalek's SIMD backend cannot build for a target with no SSE; its portable one must be
+          # chosen with this cfg (there is no Cargo feature for it). Every consumer building for
+          # x86_64-unknown-none needs the same flag - crates/godspeed-package/src/lib.rs says so.
+          export CARGO_TARGET_X86_64_UNKNOWN_NONE_RUSTFLAGS='--cfg curve25519_dalek_backend="serial"'
           for t in $targets; do
             cargo build -p godspeed-package --no-default-features --locked --target "$t"
           done
-          if cargo tree -p godspeed-package --no-default-features -e features --target x86_64-unknown-none \
+          # What is compiled INTO the crate; build scripts run on the host and may use std.
+          if cargo tree -p godspeed-package --no-default-features -e features,no-build,no-dev --target x86_64-unknown-none \
                | grep -E 'feature "(alloc|std)"'; then
             echo "::error::the package contract's no_std build pulls in alloc or std (above)"
             exit 1
