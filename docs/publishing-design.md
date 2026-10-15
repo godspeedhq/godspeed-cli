@@ -1,7 +1,7 @@
 # Publishing: the registry protocol, its control plane, and its trust model
 
-**Status: PROPOSAL, 2026-10-15. Nothing here is built or approved.** It is the design `godspeed publish`
-waits on. Decisions that are the maintainer's are marked **DECIDE** and collected in section 9.
+**Status: DESIGN, decisions taken 2026-10-15 (section 9). Being built in `godspeed-registry`.** It is the
+design `godspeed publish` waits on.
 
 Storage is chosen: the Cloudflare R2 bucket `godspeedos-packages`, with a custom domain to come. Everything
 else here is built so that choice stays an implementation detail (CLAUDE.md, "External Services").
@@ -43,7 +43,10 @@ and is an administrator's tool. The CLI never names it.
     index/<publisher>/<name>.toml
     index/root.json            (section 6)
     index/timestamp.json       (section 6)
-    staging/<upload-id>/...    (never served; section 5)
+
+and, in a **second, private bucket** `godspeedos-staging` that has no public domain at all:
+
+    <publisher>/<name>/<version>/<upload-id>/...   (in-progress uploads; section 3)
 
 - **`packages/` is immutable.** A key is written once, at finalisation, and never again. Served with a
   long cache lifetime; a CDN may hold it forever.
@@ -51,7 +54,9 @@ and is an administrator's tool. The CLI never names it.
 - The files under a version are exactly a package directory as `godspeed package` writes it and
   `godspeed verify` checks it (`docs/package-format.md`). A downloaded version is verifiable with the same
   command, by anyone.
-- **`staging/` is not served** by the custom domain (a Worker route or bucket rule refuses it).
+- **Staging is a separate bucket, not a prefix.** An R2 custom domain serves every key in its bucket, so a
+  `staging/` prefix beside `packages/` would make half-finished uploads downloadable. A bucket with no
+  public domain cannot leak them, whatever a route rule says.
 
 ### The package index
 
@@ -90,15 +95,15 @@ reported only once its outcome is established:
    It returns an upload id and an expiry (15 minutes). **Concurrent publishes are decided here**: exactly
    one reservation per version succeeds; the other is told "1.0.0 is being published by another upload"
    or "1.0.0 already exists", and nothing it does can overwrite the winner.
-4. **Upload** each file: `PUT /v1/uploads/<id>/<file>`. The Worker writes to `staging/<id>/`. Only the files
+4. **Upload** each file: `PUT /v1/uploads/<id>/<file>`. The Worker writes to the staging bucket. Only the files
    the reserved manifest names are accepted, each checked against its declared size and digest as it
    streams in - the same `ArtifactVerifier`, compiled to WebAssembly, that the CLI and the native package
    manager use. A file that fails is refused at once.
 5. **Sign** (section 6) and **finalise**: `POST /v1/uploads/<id>/finalise`. The API re-verifies the whole
    staged package, copies it to `packages/.../<version>/`, then writes the index entry, then the timestamp.
    **The index write is the commit point.** Before it, the version does not exist for any reader; after it,
-   every file it names is already in place. A crash anywhere before it leaves only `staging/`, which is
-   never served and is swept when the reservation expires.
+   every file it names is already in place. A crash anywhere before it leaves only staged files, in a bucket
+   that is never served, swept when the reservation expires.
 6. **Report** `Published alice/hello@1.0.0` and the install line.
 
 ### When the outcome is unknown
@@ -126,7 +131,7 @@ hand first. The maintainer creates a publisher (`alice`) and issues a token scop
 `godspeed login` stores it in the operating system's credential store (Windows Credential Manager, macOS
 Keychain, the Secret Service on Linux) and never in a project or package file; `godspeed whoami` asks
 the API who it belongs to; `godspeed logout` deletes it locally and revokes it remotely. Tokens expire
-(**DECIDE**: 90 days proposed) and can be revoked by the maintainer at any time.
+(90 days proposed; still open) and can be revoked by the maintainer at any time.
 
 **Phase 2: CI without long-lived secrets.** GitHub Actions can present a short-lived OIDC token naming the
 repository and workflow; the API maps an allowed repository to a namespace ("trusted publishing", as
@@ -138,7 +143,7 @@ not be the namespace's first owner.
 
 Where the API keeps tokens, namespaces and reservations: **Cloudflare D1** for the records, and a
 **Durable Object per package** to serialise reservation and finalisation, so "exactly one wins" holds
-without relying on R2 conditional writes (**DECIDE**, section 9).
+without relying on R2 conditional writes (decided, section 9).
 
 ## 5. Why a Worker, and what it runs
 
@@ -150,7 +155,7 @@ without relying on R2 conditional writes (**DECIDE**, section 9).
 - Request bodies up to 100 MB fit format 1's 64 MiB artifact ceiling, so uploads stream through the
   Worker without presigned URLs. (Presigned R2 URLs remain an option if that ceiling grows.)
 
-Where it lives: **a separate repository** (`godspeed-registry`, **DECIDE**), depending on
+Where it lives: **a separate repository** (`godspeed-registry`, decided), depending on
 `godspeed-package` from this one. It is infrastructure with its own deploy cycle and secrets, and keeping
 it out of the CLI keeps the CLI free of anything Cloudflare-specific.
 
@@ -162,7 +167,7 @@ as the reference for exactly that, and this section follows its roles rather tha
 
 | TUF role | Here | Key held |
 |---|---|---|
-| root | `index/root.json`: lists the keys allowed for every other role, and itself | offline, by the maintainer; 2 of 3 to change it (**DECIDE**) |
+| root | `index/root.json`: lists the keys allowed for every other role, and itself | offline, by the maintainer; 2 of 3 to change it (to confirm) |
 | targets, delegated | each **publisher** signs their own release: the canonical bytes of `manifest.toml` | by the publisher, on their machine; CI via phase 2 |
 | snapshot | the set of current index files and their digests | online, by the Worker |
 | timestamp | `index/timestamp.json`: the snapshot's digest, expiring in a day | online, by the Worker |
@@ -190,7 +195,7 @@ changes the manifest; format 1 stays format 1.
 
 **Recommendation: implement the TUF roles and file formats directly from the specification, scoped to
 these four roles, rather than adopting a full TUF library.** The native package manager must verify
-metadata under the no-heap rule, and no existing TUF implementation is `no_std`. **DECIDE.**
+metadata under the no-heap rule, and no existing TUF implementation is `no_std`. (Decided, section 9.)
 
 ## 7. What is not in this design
 
@@ -210,10 +215,12 @@ metadata under the no-heap rule, and no existing TUF implementation is `no_std`.
    are "defined before the first public publish, not after").
 5. Phase 2 trusted publishing from CI.
 
-## 9. Decisions for the maintainer
+## 9. Decisions (taken 2026-10-15)
 
-1. Phase 1 authentication as hand-issued, namespace-scoped API tokens - and their lifetime (90 days?).
-2. A Cloudflare Worker as the control plane, in a separate `godspeed-registry` repository.
-3. D1 plus a Durable Object per package for reservations, rather than R2 conditional writes alone.
-4. TUF's four roles implemented directly (no TUF library), with root keys held offline, 2 of 3.
-5. The custom domain's name, and whether the registry URL the CLI uses by default is that domain.
+1. **Phase 1 authentication: hand-issued, namespace-scoped API tokens.** Lifetime still open (90 days
+   proposed).
+2. **The control plane is a Cloudflare Worker, in a separate `godspeed-registry` repository.**
+3. **D1 plus a Durable Object per package** for reservations (taken with 2: the Worker's design).
+4. **TUF's four roles, implemented directly** (no TUF library), so verification can be `no_std`. Root
+   keys offline, 2 of 3 still to confirm.
+5. Open: the custom domain's name, and whether it is the CLI's default registry URL.

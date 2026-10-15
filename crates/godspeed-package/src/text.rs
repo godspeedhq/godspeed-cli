@@ -158,7 +158,10 @@ pub fn parse(text: &str) -> Result<OwnedManifest, ParseError> {
         Some(n) if n != FORMAT => {
             return Err(ParseError::Invalid(std::vec![Problem {
                 field: "format",
-                kind: ProblemKind::UnknownFormat(n)
+                kind: ProblemKind::UnknownFormat {
+                    found: n,
+                    known: FORMAT
+                }
             }]))
         }
         Some(_) => {}
@@ -331,7 +334,10 @@ mod tests {
             ps,
             [Problem {
                 field: "format",
-                kind: ProblemKind::UnknownFormat(2)
+                kind: ProblemKind::UnknownFormat {
+                    found: 2,
+                    known: FORMAT
+                }
             }]
         );
     }

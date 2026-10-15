@@ -86,8 +86,13 @@ pub enum ProblemKind {
     Missing,
     /// A field's value has the wrong form; the `&str` says what form was expected.
     Malformed(&'static str),
-    /// The manifest is a format this reader does not know.
-    UnknownFormat(u32),
+    /// The file is a format this reader does not know.
+    UnknownFormat {
+        /// The format the file declares.
+        found: u32,
+        /// The format this reader reads.
+        known: u32,
+    },
     /// The kind is one the format does not package; the `&str` says why.
     KindNotPackageable(&'static str),
     /// No artifacts at all.
@@ -106,6 +111,12 @@ pub enum ProblemKind {
     NameDiffersFromContract,
     /// The package's version differs from the contract's.
     VersionDiffersFromContract,
+    /// An index lists the same version twice.
+    DuplicateVersion(Version),
+    /// A timestamp is not `YYYY-MM-DDTHH:MM:SSZ`.
+    BadTimestamp,
+    /// An index's releases are not in publication order.
+    TimestampOrder,
 }
 
 /// A rule a manifest broke, and the field it broke it in.
@@ -123,11 +134,8 @@ impl fmt::Display for Problem {
         match self.kind {
             ProblemKind::Missing => write!(f, "{field} is required"),
             ProblemKind::Malformed(what) => write!(f, "{field}: {what}"),
-            ProblemKind::UnknownFormat(n) => {
-                write!(
-                    f,
-                    "{field}: this is manifest format {n}; this reader knows format {FORMAT}"
-                )
+            ProblemKind::UnknownFormat { found, known } => {
+                write!(f, "{field}: this is format {found}; this reader knows format {known}")
             }
             ProblemKind::KindNotPackageable(why) => write!(f, "{field}: {why}"),
             ProblemKind::NoArtifacts => write!(f, "{field}: a package carries at least one architecture's binary"),
@@ -152,6 +160,9 @@ impl fmt::Display for Problem {
                     "{field}: the package's version must be its service contract's version"
                 )
             }
+            ProblemKind::DuplicateVersion(v) => write!(f, "{field}: version {v} is listed twice"),
+            ProblemKind::BadTimestamp => write!(f, "{field}: a timestamp is YYYY-MM-DDTHH:MM:SSZ, in UTC"),
+            ProblemKind::TimestampOrder => write!(f, "{field}: releases are listed in the order they were published"),
         }
     }
 }
@@ -174,7 +185,13 @@ impl Manifest<'_> {
         };
 
         if self.format != FORMAT {
-            bad("format", ProblemKind::UnknownFormat(self.format));
+            bad(
+                "format",
+                ProblemKind::UnknownFormat {
+                    found: self.format,
+                    known: FORMAT,
+                },
+            );
         }
         if let Some(d) = self.description {
             if !text_ok(d, MAX_DESCRIPTION) {
@@ -303,7 +320,10 @@ pub(crate) mod tests {
         assert_eq!(
             found,
             [
-                ProblemKind::UnknownFormat(2),
+                ProblemKind::UnknownFormat {
+                    found: 2,
+                    known: FORMAT
+                },
                 ProblemKind::BadText,
                 ProblemKind::EmptyArtifact(Arch::Riscv64),
                 ProblemKind::ArtifactOrder,

@@ -31,6 +31,7 @@ extern crate std;
 
 mod arch;
 mod digest;
+mod index;
 mod manifest;
 mod name;
 #[cfg(feature = "toml")]
@@ -40,6 +41,9 @@ mod version;
 
 pub use arch::Arch;
 pub use digest::{DigestError, Sha256Digest};
+#[cfg(feature = "toml")]
+pub use index::{index_to_toml, parse_index, OwnedPackageIndex};
+pub use index::{is_timestamp, PackageIndex, Release, INDEX_FORMAT};
 pub use manifest::{Artifact, Kind, Manifest, Problem, ProblemKind, CONTRACT_FILE, FORMAT, MAX_ARTIFACT_SIZE};
 pub use name::{NameError, PackageName, PART_MAX};
 #[cfg(feature = "toml")]
