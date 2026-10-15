@@ -9,18 +9,22 @@ name: release
 #              until a maintainer publishes the draft; `releases/latest` (what the installers fetch) never
 #              resolves to a draft.
 #
-# Run it by hand (workflow_dispatch) for a dry run: everything but publish. A pull request that changes this
-# file also gets a dry run, so the release path is proven before it is merged rather than at the first tag.
+# Run it by hand (workflow_dispatch) for a dry run: everything but publish. (It is deliberately not run on
+# pull requests: GitHub filters a PR's paths against the whole PR, so it would rebuild six targets on every
+# push to any PR that ever touched this file.)
 
 on:
   push:
     tags: ['cli-v*']
-  pull_request:
-    paths: ['.github/workflows/release.yml']
   workflow_dispatch:
 
 permissions:
   contents: read
+
+# A newer dry run supersedes an older one; a tagged release is never cancelled.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'workflow_dispatch' }}
 
 env:
   CARGO_TERM_COLOR: always
