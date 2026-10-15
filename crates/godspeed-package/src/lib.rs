@@ -1,0 +1,48 @@
+//! The Godspeed package contract.
+//!
+//! What a Godspeed package IS, as types and rules that the developer CLI (which produces packages) and the
+//! native package manager (which verifies and installs them) both depend on, so the two can never disagree
+//! about it. The format is described in `docs/package-format.md`.
+//!
+//! # The two halves
+//!
+//! - **The core** - names, versions, architectures, digests, the manifest model, its validation, and
+//!   streaming artifact verification - is `no_std` and never allocates. The native package manager runs on
+//!   Godspeed, under the OS's no-heap rule, and must be able to use all of it.
+//! - **The `toml` feature** reads and writes the manifest's text form. It needs `std` and a heap, so it is
+//!   host-only. (How the native side will read the text without a heap is an open question; see the
+//!   format document.)
+//!
+//! # What this crate does not decide
+//!
+//! - **Authority.** A package carries its OS service contract, which REQUESTS capabilities. Nothing here
+//!   grants anything, and nothing here restates the contract's capabilities: the manifest binds the
+//!   contract by digest, so there is one declaration of a service's authority, not two.
+//! - **Trust.** A digest proves bytes are the ones the manifest names. It says nothing about who made
+//!   them or whether they are safe. Publisher signatures and the registry's trust model are not designed
+//!   yet, and nothing here pretends otherwise.
+
+#![no_std]
+#![deny(unsafe_code)]
+#![warn(missing_docs)]
+
+#[cfg(any(test, feature = "toml"))]
+extern crate std;
+
+mod arch;
+mod digest;
+mod manifest;
+mod name;
+#[cfg(feature = "toml")]
+mod text;
+mod verify;
+mod version;
+
+pub use arch::Arch;
+pub use digest::{DigestError, Sha256Digest};
+pub use manifest::{Artifact, Kind, Manifest, Problem, ProblemKind, CONTRACT_FILE, FORMAT, MAX_ARTIFACT_SIZE};
+pub use name::{NameError, PackageName, PART_MAX};
+#[cfg(feature = "toml")]
+pub use text::{parse, to_toml, OwnedManifest, ParseError};
+pub use verify::{ArtifactVerifier, VerifyError};
+pub use version::{Version, VersionError};

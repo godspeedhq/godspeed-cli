@@ -21,3 +21,7 @@ jsonschema = { version = "0.18", default-features = false }
 
 [profile.release]
 strip = true
+
+# The CLI and the package contract it shares with the native package manager.
+[workspace]
+members = [".", "crates/godspeed-package"]

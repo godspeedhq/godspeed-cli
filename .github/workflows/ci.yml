@@ -50,13 +50,32 @@ jobs:
           rustup default stable
 
       - name: Formatting
-        run: cargo fmt --check
+        run: cargo fmt --all --check
 
       - name: Lints
-        run: cargo clippy --all-targets --locked -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
       - name: Offline tests
-        run: cargo test --locked
+        run: cargo test --workspace --all-features --locked
+
+      # CLAUDE.md: the package-contract crate "must build `no_std` and without an allocator, because the
+      # native side runs on Godspeed under its no-heap rule". A successful build alone does not prove the
+      # second half - `alloc` ships for these targets - so the dependency tree is also checked for any
+      # `alloc` or `std` feature. Once, on Linux: the answer does not depend on the host.
+      - name: Package contract is no_std and allocator-free, on every Godspeed target
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          targets="x86_64-unknown-none aarch64-unknown-none armv7a-none-eabi riscv64imac-unknown-none-elf"
+          rustup target add $targets
+          for t in $targets; do
+            cargo build -p godspeed-package --no-default-features --locked --target "$t"
+          done
+          if cargo tree -p godspeed-package --no-default-features -e features --target x86_64-unknown-none \
+               | grep -E 'feature "(alloc|std)"'; then
+            echo "::error::the package contract's no_std build pulls in alloc or std (above)"
+            exit 1
+          fi
 
   templates:
     name: Templates against GodspeedOS ${{ matrix.os_ref }}

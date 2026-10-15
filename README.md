@@ -52,6 +52,15 @@ GodspeedOS has one, `godspeed run` says so rather than editing the OS for you.
 
 The contract grants nothing. What a service is actually given is the operating system's decision.
 
+## The package contract
+
+`crates/godspeed-package` is what a Godspeed package is: the manifest's types and rules, and streaming
+artifact verification. It is shared with the native package manager, so it is `no_std` and never
+allocates (CI builds it for all four Godspeed targets and checks its dependency tree); reading and writing
+the manifest's TOML is a host-only feature. The format, and what it deliberately leaves out, is in
+[docs/package-format.md](docs/package-format.md). Nothing produces packages yet: `godspeed package`
+comes next.
+
 ## Exit codes
 
 Scripts and CI can tell failures apart without reading the text:
