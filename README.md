@@ -76,5 +76,9 @@ Scripts and CI can tell failures apart without reading the text:
     cargo test                                                     # offline, against tests/fixtures/os
     GODSPEED_OS=/path/to/godspeed-os cargo test -- --ignored       # real build for every architecture
 
-The ignored test needs the OS's pinned toolchain with its four targets, and network access to fetch the
+The ignored tests need the OS's pinned toolchain with its four targets, and network access to fetch the
 stdlib at its release tag.
+
+CI (`.github/workflows/ci.yml`) runs both: formatting, lints and the offline tests on Linux and Windows,
+then every template generated and built against each supported GodspeedOS release, for every
+architecture that release builds, with `godspeed doctor` run first as the gate a developer would hit.

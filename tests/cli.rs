@@ -236,13 +236,53 @@ fn generated_service_builds_for_every_architecture() {
     let p = dir.join("hello");
     let o = godspeed(&p, Some(&os), &["build", "--all"]);
     assert_eq!(code(&o), 0, "{}", stderr(&o));
+    // (triple, ELF e_machine): each binary must be for the machine it claims, with a real entry point.
+    for (triple, machine) in [
+        ("x86_64-unknown-none", 0x3E),
+        ("aarch64-unknown-none", 0xB7),
+        ("armv7a-none-eabi", 0x28),
+        ("riscv64imac-unknown-none-elf", 0xF3),
+    ] {
+        let elf = std::fs::read(p.join("target").join(triple).join("release/hello")).unwrap();
+        assert_eq!(&elf[..4], b"\x7fELF", "{triple}: not an ELF");
+        assert_eq!(elf[5], 1, "{triple}: every Godspeed port is little-endian");
+        assert_eq!(
+            u16::from_le_bytes([elf[18], elf[19]]),
+            machine,
+            "{triple}: wrong machine"
+        );
+        // An entry of 0 is what an unexported `service_main` produces: it links, then faults at boot.
+        let entry = match elf[4] {
+            1 => u64::from(u32::from_le_bytes(elf[24..28].try_into().unwrap())),
+            2 => u64::from_le_bytes(elf[24..32].try_into().unwrap()),
+            c => panic!("{triple}: unknown ELF class {c}"),
+        };
+        assert_ne!(entry, 0, "{triple}: entry point is 0");
+    }
+}
+
+/// The library template on a real OS checkout: its tests run on the host, and it builds for every
+/// architecture.
+#[test]
+#[ignore = "needs GODSPEED_OS, the pinned toolchain and network access"]
+fn generated_library_tests_pass_and_it_builds_for_every_architecture() {
+    let os = PathBuf::from(std::env::var("GODSPEED_OS").expect("set GODSPEED_OS to a GodspeedOS checkout"));
+    let dir = scratch("e2e_library");
+    assert_eq!(code(&godspeed(&dir, Some(&os), &["new", "library", "parser"])), 0);
+    let p = dir.join("parser");
+    let o = godspeed(&p, Some(&os), &["test"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    let o = godspeed(&p, Some(&os), &["build", "--all"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
     for triple in [
         "x86_64-unknown-none",
         "aarch64-unknown-none",
         "armv7a-none-eabi",
         "riscv64imac-unknown-none-elf",
     ] {
-        let elf = std::fs::read(p.join("target").join(triple).join("release/hello")).unwrap();
-        assert_eq!(&elf[..4], b"\x7fELF", "{triple}");
+        assert!(
+            p.join("target").join(triple).join("release/libparser.rlib").is_file(),
+            "{triple}"
+        );
     }
 }
