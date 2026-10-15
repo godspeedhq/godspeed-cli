@@ -438,7 +438,9 @@ impl<'a> Namespaces<'a> {
 
     /// The status of `k` for `publisher`, if it is one of their keys.
     pub fn status(&self, publisher: &str, k: &PublicKey) -> Option<KeyStatus<'a>> {
-        self.entries().find(|(p, _, key)| *p == publisher && key == k).map(|(_, s, _)| s)
+        self.entries()
+            .find(|(p, _, key)| *p == publisher && key == k)
+            .map(|(_, s, _)| s)
     }
 
     /// Every entry, in document order: publisher, status, key.

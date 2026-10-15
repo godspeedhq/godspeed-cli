@@ -200,6 +200,9 @@ pub struct Reservation {
 pub struct Published {
     pub manifest: String,
     pub published: String,
+    /// The signed snapshot that includes the release; `None` if the registry could not re-sign yet.
+    #[serde(default)]
+    pub snapshot: Option<u64>,
 }
 
 impl Client {
@@ -285,6 +288,28 @@ impl Client {
         )
     }
 
+    /// A public file (`trust/...`, `index/...`, `packages/...`), or `None` if it does not exist. Read without a
+    /// token, and never more than `limit` bytes: a hostile server cannot make the CLI read forever.
+    pub fn get(&self, path: &str, limit: u64) -> Answer<Option<Vec<u8>>> {
+        use std::io::Read;
+        let url = format!("{}/{path}", self.base);
+        match self.agent.get(&url).call() {
+            Ok(resp) => {
+                let mut bytes = Vec::new();
+                match resp.into_reader().take(limit + 1).read_to_end(&mut bytes) {
+                    Ok(_) if bytes.len() as u64 > limit => {
+                        Answer::Unknown(format!("{path} is larger than the {limit} bytes it may be"))
+                    }
+                    Ok(_) => Answer::Done(Some(bytes)),
+                    Err(e) => Answer::Unknown(format!("{path} could not be read: {e}")),
+                }
+            }
+            Err(ureq::Error::Status(404, _)) => Answer::Done(None),
+            Err(ureq::Error::Status(status, _)) => Answer::Unknown(format!("{path} could not be read (HTTP {status})")),
+            Err(ureq::Error::Transport(t)) => Answer::Unknown(format!("{path} could not be read: {t}")),
+        }
+    }
+
     /// The package's public index, or `None` if nothing of it has been published. Read without a token.
     pub fn index(&self, name: &str) -> Answer<Option<String>> {
         let (publisher, service) = name.split_once('/').unwrap_or((name, ""));
@@ -352,6 +377,13 @@ pub fn refused(doing: &str, registry: &str, r: &Refusal) -> Diagnostic {
             Stage::Authentication,
             "Send your public key (`godspeed key show`) to the registry maintainer to register for this namespace, \
              then publish again."
+                .into(),
+        ),
+        "trust-not-initialised" | "trust-expired" => (
+            Kind::RegistryUnavailable,
+            Stage::Authentication,
+            "The registry's signed trust metadata is missing or expired; its maintainer must sign and upload it. \
+             Nothing can be published until then."
                 .into(),
         ),
         "size-mismatch" | "digest-mismatch" => (

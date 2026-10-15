@@ -82,6 +82,17 @@ enum Command {
         /// The package directory
         path: PathBuf,
     },
+    /// Download a published release and verify it through the registry's whole chain of trust
+    Fetch {
+        /// publisher/name, optionally @version (default: the highest published)
+        package: String,
+        /// Write it here (default: ./<publisher>-<name>-<version>)
+        #[arg(long, value_name = "PATH")]
+        out: Option<PathBuf>,
+        /// On first contact with a registry, trust its root 1 only if it has this digest (sha256:...)
+        #[arg(long, value_name = "DIGEST")]
+        trust_root: Option<String>,
+    },
     /// Make or show your signing key
     Key {
         #[command(subcommand)]
@@ -222,6 +233,11 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
             Ok(())
         }
         Command::Sign { path } => cmd::sign::run(&path),
+        Command::Fetch {
+            package,
+            out,
+            trust_root,
+        } => cmd::fetch::run(&package, reg, out.as_deref(), trust_root.as_deref()),
         Command::Key { action } => match action {
             KeyAction::Generate => cmd::sign::key_generate(),
             KeyAction::Show => cmd::sign::key_show(),

@@ -50,8 +50,13 @@ fn published(name: &str, version: Version, when: &str, already: bool) {
     }
     println!("Install, on a Godspeed machine:");
     println!("  godspeed install {name}");
-    println!("The registry verified every file and your signature. Its trust anchor (signed root and index metadata)");
-    println!("is not built yet, so a client cannot yet check that your key is the one registered for your namespace.");
+    println!("Verify it from the registry, as a client would: godspeed fetch {name}@{version}");
+}
+
+/// The registry committed the release but could not yet re-sign a snapshot listing it.
+fn snapshot_pending(name: &str) {
+    println!("Note: the registry has not yet re-signed its snapshot to include this release, so clients cannot verify");
+    println!("{name} until it does - at its next refresh, within six hours. Nothing needs redoing.");
 }
 
 pub fn run(platform: &Platform, project: &Project, registry_flag: Option<&str>) -> Result<()> {
@@ -139,6 +144,9 @@ pub fn run(platform: &Platform, project: &Project, registry_flag: Option<&str>) 
     match client.finalise(&name, &version.to_string(), &reservation.upload) {
         Answer::Done(p) if p.manifest == ours.to_string() => {
             published(&name, version, &p.published, false);
+            if p.snapshot.is_none() {
+                snapshot_pending(&name);
+            }
             Ok(())
         }
         Answer::Done(p) => Err(Diagnostic::new(

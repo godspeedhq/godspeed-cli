@@ -450,6 +450,32 @@ fn sign_then_verify_names_the_key_and_any_change_breaks_the_signature() {
 }
 
 #[test]
+fn fetch_refuses_a_bad_name_or_version_before_contacting_anyone() {
+    let dir = scratch("fetch_names");
+    for (spec, says) in [("hello", "publisher/name"), ("alice/hello@1.02.0", "not a version")] {
+        let o = godspeed(&dir, None, &["fetch", spec, "--registry", "http://127.0.0.1:9"]);
+        assert_eq!(code(&o), 10, "{spec}: {}", stderr(&o));
+        assert!(stderr(&o).contains(says), "{spec}: {}", stderr(&o));
+    }
+}
+
+#[test]
+fn fetch_from_an_unreachable_registry_says_so_and_trusts_nothing() {
+    let dir = scratch("fetch_unreachable");
+    let o = godspeed(
+        &dir,
+        None,
+        &["fetch", "alice/hello", "--registry", "http://127.0.0.1:9"],
+    );
+    assert_eq!(code(&o), 19, "{}", stderr(&o));
+    assert!(
+        !dir.join(".godspeed-config/trust").exists(),
+        "nothing remembered from a registry never reached"
+    );
+    assert!(!dir.join("alice-hello").exists());
+}
+
+#[test]
 fn a_bad_signing_key_in_the_environment_is_refused() {
     let dir = write_package("bad_seed");
     let mut c = command(dir.parent().unwrap(), None, &["sign", dir.to_str().unwrap()]);

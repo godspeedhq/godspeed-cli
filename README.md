@@ -77,6 +77,7 @@ the installers' `releases/latest` never resolves to a draft.
 | `run` | refused: GodspeedOS has no public way to run a service built outside its tree |
 | `key generate`, `key show` | work: an Ed25519 signing key, made and kept on this machine; only the public half is ever shared |
 | `sign <dir>` | works: signs a package directory (`manifest.sig`) and verifies the result; `publish` does it for you |
+| `fetch <publisher/name>[@version]` | works: downloads a release and verifies it through the registry's whole chain of trust before keeping it |
 | `login`, `whoami`, `logout` | work: a publisher token for a registry, checked with it before it is stored; `logout` revokes it there |
 | `publish` | works: packages every architecture, then reserves, uploads and finalises; if finalising gets no answer it reads the registry's index and reports what it finds, and running it again is always safe |
 | `install`, `search`, `info`, `list`, `update`, `uninstall` | belong to the native package manager on a Godspeed machine, and say so |
@@ -111,9 +112,10 @@ credentials.
 Every release is signed with your key (`manifest.sig`), and the registry refuses one that is not signed by a
 key registered for your namespace. Your secret key stays in `signing-key.toml` beside the credentials,
 readable by you alone - back it up; in CI, set `GODSPEED_SIGNING_KEY` instead. A signature proves which key
-signed; that the key is the one registered for a publisher is, for now, the registry's own record - the
-signed trust anchor that lets clients check it independently is the next step
-([docs/publishing-design.md](docs/publishing-design.md), section 6).
+signed; which keys may sign for a publisher is the registry's offline-signed namespaces metadata, which even
+the registry cannot alter. `godspeed fetch alice/hello` checks all of it the way a Godspeed machine will
+before installing: root (trusted on first contact - pin it with `--trust-root`), timestamp, snapshot,
+namespaces, index, manifest, signature, files ([docs/trust-metadata.md](docs/trust-metadata.md)).
 
 ## The package contract
 
@@ -149,6 +151,7 @@ Scripts and CI can tell failures apart without reading the text:
 | 24 | conflict: the version is already published, or being published |
 | 25 | outcome unknown: finalising got no answer and the index does not show it yet - run `publish` again |
 | 26 | signature failure: a signature is malformed, or the named key did not sign this manifest |
+| 27 | untrusted: the registry's signed metadata does not vouch for it - an unknown, retired or revoked key, or metadata that is unsigned, expired, rolled back or inconsistent |
 | 30 | a local file could not be read or written |
 
 ## Development

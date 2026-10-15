@@ -61,6 +61,9 @@ pub enum Kind {
     IntegrityFailure,
     /// A signature is malformed, or does not verify: the named key did not sign this manifest.
     SignatureFailure,
+    /// The registry's signed trust metadata does not vouch for this: an unknown, retired or revoked key, or
+    /// metadata that is unsigned, expired, rolled back or inconsistent.
+    Untrusted,
     /// The registry does not accept these credentials: none, unknown, revoked or expired.
     AuthenticationFailure,
     /// The registry could not be reached, or failed, before anything was decided.
@@ -101,6 +104,7 @@ impl Kind {
             Kind::Conflict => 24,
             Kind::OutcomeUnknown => 25,
             Kind::SignatureFailure => 26,
+            Kind::Untrusted => 27,
             Kind::Io => 30,
         }
     }
@@ -238,6 +242,7 @@ mod tests {
             Kind::InvalidPackage,
             Kind::IntegrityFailure,
             Kind::SignatureFailure,
+            Kind::Untrusted,
             Kind::AuthenticationFailure,
             Kind::RegistryUnavailable,
             Kind::PermissionDenied,

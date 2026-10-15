@@ -192,35 +192,45 @@ What each defends against:
 - `godspeed key generate` makes a key on the publisher's machine and stores the secret half in the
   configuration directory, readable by the user alone (`GODSPEED_SIGNING_KEY` replaces it in CI, never
   stored). Only the public half is ever sent anywhere: the publisher gives it to the maintainer.
-- The maintainer registers it for a namespace (`scripts/admin.mjs add-key` in `godspeed-registry`).
 - Every release carries `manifest.sig` (`docs/package-format.md` section 4a). `godspeed publish` signs; the
-  registry refuses a release whose signature does not verify (`signature-invalid`) or whose key is not
-  registered and unrevoked for the namespace (`key-not-registered`) - checked on upload and again at
-  finalisation, so a key revoked mid-publish cannot finish one. `manifest.sig` is published beside the
-  manifest.
-- Revoking a key (`admin.mjs revoke-key`) stops it signing anything new. It never alters a published release:
-  those bytes, signature included, stay exactly as published.
+  registry refuses a release whose signature does not verify (`signature-invalid`) or whose key may not sign
+  for the namespace (`key-not-registered`) - checked on upload and again at finalisation, so a key retired
+  or revoked mid-publish cannot finish one. `manifest.sig` is published beside the manifest.
 
-**What slice 1 does not yet defend against:** the binding of a key to a namespace lives in the registry's
-own database. A client can check that a release is signed, and by which key, but not - from anything the
-registry cannot alter - that the key is the one registered for that publisher. A compromised registry could
-register its own key and sign a release in Alice's name. Slice 2 closes this.
+### Slice 2 - built (2026-10-15): the trust anchor
 
-### Slice 2 - next: the trust anchor
+The roles above, implemented directly from TUF's design and scoped to these four (no TUF library: none is
+`no_std`, and the native package manager must verify under the no-heap rule). The formats and a client's
+exact checks are `docs/trust-metadata.md`.
 
-Root metadata listing each namespace's keys, signed offline by the root keys, so the registry cannot change
-it; snapshot and timestamp signed online by the Worker, for freshness and against rollback; and client-side
-verification of all of it in the package crate, `no_std`.
+- **Which keys may sign for whom lives in `namespaces`, signed OFFLINE** with `godspeed-trust` (in
+  `godspeed-registry`), and nowhere else - the registry's database no longer holds keys. The Worker checks
+  every new release against it, after verifying the whole root chain exactly as a client does.
+- **Retire and revoke are separate actions** (maintainer's decision, 2026-10-15). Retire (rotation): the key
+  signs nothing new; releases published before the retirement stay trusted. Revoke (compromise): nothing the
+  key ever signed is trusted. Neither alters a published byte.
+- **The registry signs `snapshot` and `timestamp` with its one online key** (a Worker secret): the snapshot
+  rebuilt from the bucket's actual index files after every publish and whenever asked, the timestamp valid
+  for a day and re-signed every six hours by a cron.
+- **`godspeed fetch`** is the client: it verifies root, timestamp, snapshot, namespaces, index, manifest,
+  signature and files before keeping anything, remembers the root and the newest versions it has seen, and
+  refuses rollback.
+- **The root threshold is the maintainer's choice when making the root**; the format takes any. The
+  recommendation stands: two of three root keys, held apart.
 
-**Open decision for the maintainer: what revoking a key means for releases it already signed.** Rotating a
-key (retiring it routinely) and revoking it after a compromise call for different answers - after a
-rotation, old releases are as trustworthy as ever; after a compromise, anything it signed may be suspect.
-TUF expresses either through what root metadata lists; slice 2 needs the choice made (both kinds of
-removal, distinguished, is the likely shape).
+**What it defends against now:** a swapped artifact, index, snapshot or namespaces document; a forged
+release; a publisher key added or swapped by anyone without the offline namespaces keys - including a fully
+compromised registry; a replayed old index; a key used after its retirement; anything signed by a revoked
+key.
 
-**Recommendation: implement the TUF roles and file formats directly from the specification, scoped to
-these four roles, rather than adopting a full TUF library.** The native package manager must verify
-metadata under the no-heap rule, and no existing TUF implementation is `no_std`. (Decided, section 9.)
+**What it does not:**
+
+- **A compromised online key** can withhold or delay releases and show a frozen view - for at most a
+  timestamp's lifetime (one day), after which clients refuse it. It cannot forge a publisher's release.
+- **First contact trusts root 1** unless the client pins its digest (`--trust-root`). The official
+  registry's root 1 digest should be published somewhere independent of the registry - its documentation,
+  the CLI's release notes - and, eventually, built into the CLI.
+- **A stolen offline key** is as bad as it sounds; the threshold is what makes one stolen key not enough.
 
 ## 7. What is not in this design
 

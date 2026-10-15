@@ -2,6 +2,7 @@ pub mod account;
 pub mod build;
 pub mod check;
 pub mod doctor;
+pub mod fetch;
 pub mod new;
 pub mod package;
 pub mod publish;
