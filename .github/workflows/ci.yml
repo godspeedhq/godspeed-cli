@@ -12,10 +12,15 @@ name: ci
 #                service built outside its tree), so for a service this job proves the build and checks
 #                each binary's machine and entry point - it does not claim more.
 
+# Frugal by design: a change to the top-level prose only (README, CLAUDE.md, LICENSE) runs nothing.
+# `*.md` matches the repository root only, so a template's README - which ships inside generated
+# projects - still runs the full workflow.
 on:
   push:
     branches: [main]
+    paths-ignore: ['*.md', 'LICENSE']
   pull_request:
+    paths-ignore: ['*.md', 'LICENSE']
   workflow_dispatch:
 
 permissions:
