@@ -80,22 +80,25 @@ The CLI may invoke public interfaces exposed specifically for developer tooling.
 
 ## What the CLI Owns
 
-The CLI owns developer workflow.
+The CLI owns developer workflow on the developer's workstation.
 
 Examples:
 
-    godspeed new hello
+    godspeed new service hello
     godspeed build
     godspeed test
-    godspeed run
-    godspeed info
-    godspeed install
-    godspeed update
+    godspeed run --target qemu
+    godspeed check
+    godspeed package
     godspeed publish
 
 The CLI is responsible for composing these operations.
 
 It is not responsible for redefining what the underlying system means.
+
+Installing, updating and removing software ON a Godspeed machine belongs to the native package manager, a
+separate program that shares the `godspeed` command vocabulary (see "Host CLI and Native Package Manager"
+below). The two must never be confused: one builds and publishes, the other verifies and installs.
 
 ---
 
@@ -103,9 +106,10 @@ It is not responsible for redefining what the underlying system means.
 
 ### Project creation
 
-    godspeed new <name>
+    godspeed new <kind> <name>
 
-Creates the smallest valid Godspeed application.
+Creates the smallest valid Godspeed project of that kind (see "Project Types" below; a template exists only
+for a kind the OS can actually run).
 
 The generated project should:
 
@@ -185,21 +189,30 @@ The initial system must not require a web frontend.
 
 The CLI is the primary interface.
 
-Required operations:
+Required operations, by where they run:
 
-    godspeed search <query>
-    godspeed info <package>
-    godspeed install <package>
-    godspeed update
-    godspeed publish
+    host CLI (the developer's workstation):
+        godspeed publish
+        godspeed login
+        godspeed logout
+        godspeed whoami
+
+    native package manager (a Godspeed machine):
+        godspeed search <query>
+        godspeed info <package>
+        godspeed install <package>
+        godspeed list
+        godspeed update <package>
+        godspeed uninstall <package>
 
 Potential future operations:
 
-    godspeed remove <package>
-    godspeed list
     godspeed registry
-    godspeed login
-    godspeed logout
+    godspeed delete cache <package>
+    godspeed delete data <package>
+
+`uninstall`, not `remove`: one word for one act, and `delete` keeps its Godspeed meaning of destroying data
+(the shell's `delete`), which uninstalling does not do by default.
 
 Do not implement marketplace concepts such as:
 
@@ -766,15 +779,343 @@ Minimum categories:
 
 A weak AI or unfamiliar developer should be able to:
 
-    godspeed new hello
+    godspeed new service hello
     godspeed build
-    godspeed run
+    godspeed test
+    godspeed run --target qemu
+    godspeed publish
 
-using public documentation without needing Godspeed kernel knowledge.
+and someone else, on a Godspeed machine:
+
+    godspeed install alice/hello
+
+using public documentation without needing Godspeed kernel knowledge. The subject should build something real
+(a service or a utility that does a job), not a package holding a static example. Until the OS can install an
+image it did not ship with, the test stops at `godspeed run` (see "What GodspeedOS Does Not Provide Yet").
 
 The test subject is allowed to fail.
 
 The surrounding system is being tested on how respectfully it handles that failure.
+
+---
+
+# Developer Experience and Publishing Contract
+
+**Amendment 2026-10-15.** The sections below supplement everything above. They do not replace its boundaries,
+security rules or design principles; where they appear to, the sections above win and this part is wrong.
+
+## Implementation Language
+
+The CLI is written in Rust. This is an engineering choice for the tool, not a rule that every Godspeed program
+must be Rust forever.
+
+Rust because GodspeedOS and its SDK are Rust; the CLI drives Cargo and the Rust toolchain directly; the package
+manifest can be one typed definition validated at compile time; and the CLI ships as native executables for the
+supported workstations.
+
+- Do not share host-specific code with the native package manager for the sake of reuse.
+- One small, independently versioned **package-contract crate** may be shared between them: the manifest types,
+  their validation and the artifact format. It must build `no_std` and without an allocator, because the native
+  side runs on Godspeed under its no-heap rule (the OS's CLAUDE.md 26.6.1).
+- The CLI never needs a change to MISCIS for developer convenience. If it seems to, read "Core Principle" again.
+
+## The Primary Goal
+
+A contributor who does not know Godspeed's internals can create, build, test, run and publish software through
+documented public interfaces alone:
+
+    godspeed new service hello
+    cd hello
+    godspeed build
+    godspeed test
+    godspeed run --target qemu
+    godspeed publish
+
+and another user can then install it:
+
+    godspeed install alice/hello
+
+No step may require knowledge of kernel internals, raw IPC, capability-table layout or private supervisor
+protocols.
+
+## Project Types
+
+    godspeed new service clock
+    godspeed new library parser
+    godspeed new utility status
+    godspeed new app hello
+    godspeed new driver sensor
+
+| Kind | What it is | Can the OS run it today? |
+|---|---|---|
+| `service` | A managed component with a lifecycle and declared authority requirements | **Yes.** Every runnable program on Godspeed is a service today |
+| `library` | Reusable code for other Godspeed projects; not executable or installable on its own | **Yes**, as a Rust crate. How it is distributed and depended on is defined separately from executable packages |
+| `utility` | A program that performs one operation and ends | **No.** There is no terminating task: no `fn main()`, and no way for a program to end itself (the OS's `docs/stdlib-design.md` 1). `ask` is a short-lived program only because the shell ends it |
+| `app` | A user-facing program on public application interfaces | **No.** There are no public application interfaces yet |
+| `driver` | A userspace driver on public driver interfaces (`gs::driver`) and explicitly delegated hardware | **Not for third parties.** `gs::driver` exists, but device authority is granted by the supervisor's compiled spawn rows, by device kind; a driver outside the OS tree has no way to be granted a device |
+
+These are developer-facing roles. They create no new kernel task class and no privileged identity.
+
+**A template ships only for a kind the OS can run.** The rule above ("The CLI must not invent APIs that
+GodspeedOS does not yet expose") applies here first: `godspeed new utility` before the OS has a terminating task
+would generate a program that cannot do what its kind promises. Until then the CLI answers that kind with what is
+missing and where it is tracked, never with a template that pretends.
+
+## Generated Project Requirements
+
+Every generated project:
+
+- compiles with the supported Godspeed toolchain;
+- is written on the public standard library (`gs`) and nothing below it, which the OS already enforces for its own
+  services (`scripts/one_way_check.py` holds a new crate at zero raw SDK calls);
+- carries a valid package manifest that declares the capabilities it requests;
+- contains a minimal working example and a test that runs;
+- says how to build and run it;
+- uses no undocumented API, no unnecessary dependency, and no ISA-specific logic unless the project truly needs it.
+
+Every template is built and run in CI. Templates are executable documentation: one that fails to build or run
+under its documented environment is a defect in the CLI.
+
+## Command Surface (host)
+
+    godspeed new <kind> <name>
+    godspeed build [--arch <isa> | --all]
+    godspeed test
+    godspeed run [--target qemu|hardware]
+    godspeed check
+    godspeed package
+    godspeed publish
+    godspeed login | logout | whoami
+    godspeed doctor
+
+- `check` validates the project, its manifest, its targets and its declared compatibility, without publishing.
+- `package` builds and validates the distributable artifacts locally, so they can be inspected before anything
+  leaves the machine.
+- `publish` is the authenticated publication workflow.
+- `doctor` checks the developer's environment: toolchains, targets, QEMU, credentials. It is where an error's
+  "Next:" line can send someone.
+
+Every command works non-interactively for CI, with the same validation and security. No command asks for
+something the manifest already says.
+
+## Package Manifest
+
+A versioned, machine-readable TOML manifest. Illustrative only, not a claim that these fields or capability
+names exist:
+
+    [package]
+    name = "hello"
+    version = "1.0.0"
+    kind = "service"
+    description = "Example Godspeed service"
+    license = "MIT"
+
+    [compatibility]
+    api = "1"
+
+    [capabilities]
+    request = ["log_write"]
+
+- It describes identity, compatibility, components, dependencies and **requested** authority. It grants nothing.
+- **It must be derived from the OS's existing service contract, not invented beside it.** Godspeed already has a
+  contract format (`contracts/<name>.toml`, validated against `contracts/schema/service.schema.json`), and the OS
+  is explicit that a contract is a build-time declaration and the spawn request is what grants (the OS's CLAUDE.md
+  13.6). A second, competing declaration of a service's authority is the drift that section was written to stop.
+  The package manifest should carry or reference the service contract, and use its capability names.
+- Cargo's manifest and the Godspeed manifest serve different purposes. Do not merge them silently.
+- The format has an explicit version and a written compatibility policy.
+- `api = "1"` presumes a versioned Godspeed API that does not exist yet. The OS defines that version; the CLI
+  only reads it.
+
+## Package Identity
+
+- Names are namespaced by publisher: `godspeed/ask`, `alice/clock`, `bob/editor`.
+- A package's identity is stable and independent of where it is stored.
+- **A published version is immutable.** The same version is never replaced with different bytes, silently or
+  otherwise.
+- One logical version carries one artifact per supported architecture.
+- Compatibility is the Godspeed API/ABI contract and the platform's requirements, not the CPU architecture alone.
+
+## Publishing Experience
+
+Illustrative output:
+
+    $ godspeed publish
+    Validating project...
+    Building supported targets...
+    Creating package artifacts...
+    Verifying package metadata...
+    Publisher authentication required.
+    Continue with sign-in? [Y/n]
+    Authenticating...
+    Checking namespace ownership...
+    Signing package...
+    Uploading artifacts...
+    Finalising publication...
+    Published alice/hello@1.0.0
+    Install:
+      godspeed install alice/hello
+
+A step is reported as done only when its outcome has been established. The developer never has to create a
+Cloudflare account, hold storage credentials, upload binaries by hand, edit a central index, know object keys,
+compute checksums, or run a server. The CLI does the routine work.
+
+## Authentication and Signing
+
+- Downloading needs no account. Publishing needs an authenticated identity authorised for the namespace.
+- **Authentication and signing are separate.** The registry establishes who may publish where. A signature
+  establishes which key signed an artifact or its metadata.
+- Signing keys are never embedded in artifacts or printed in logs. How a publisher's keys are registered, rotated
+  and revoked is defined before the first public publish, not after.
+- The CLI guides a first-time publisher through setup.
+- CI publishes with narrowly scoped credentials and no interactive session.
+- A valid signature does not mean a package is safe.
+
+## Registry Backend: Cloudflare R2
+
+R2 is the first object store behind the official registry. It holds immutable artifacts and their metadata.
+Illustrative layout (exact naming is an implementation detail):
+
+    packages/
+      alice/
+        hello/
+          1.0.0/
+            manifest.toml
+            armv7.gsp
+            aarch64.gsp
+            riscv64.gsp
+            x86_64.gsp
+
+- The CLI talks to the **registry protocol**, never to R2's API (see "External Services" above). The public
+  download path is a static one and does not depend on R2-specific interfaces.
+- An index provides discovery, version resolution, compatibility and artifact locations.
+- No marketplace, reviews, ratings, payments or storefront.
+
+## Publishing Control Plane
+
+Third-party publishing needs a small trusted API for: publisher authentication; namespace ownership; version
+reservation; scoped, short-lived upload authorisation; artifact and metadata verification; atomic finalisation;
+and index updates.
+
+- Developers never receive unrestricted storage credentials.
+- A partial or failed release is never installable.
+- Concurrent attempts to publish the same version do not overwrite one another: exactly one wins, and the other
+  is told so.
+- Downloads keep working when the publishing API is down.
+- The first version may approve publishers by hand. Self-service registration can come later without changing the
+  package format.
+
+## Integrity and Trust
+
+- Every artifact is bound to its package, version, target and digest, and is verified before installation.
+- The registry has a defined trust model for its index and metadata. **Signatures on artifacts are not enough if
+  an attacker can replace the index or swap a publisher's key unnoticed.** The Update Framework (TUF) is the
+  reference design for exactly this problem; read it before inventing one.
+- Five properties are kept separate: content integrity, publisher identity, registry authorisation, local
+  capability grants, and software safety.
+
+The registry distributes software. The operating system decides what it may do.
+
+## Host CLI and Native Package Manager
+
+The two share the `godspeed` vocabulary and are separate executables.
+
+- **The host CLI** creates, builds, tests, packages and publishes, on the developer's workstation.
+- **The native package manager** searches, inspects, downloads, verifies, installs, updates and uninstalls, on a
+  Godspeed machine. It is an ordinary Godspeed program on public interfaces: no privileged kernel knowledge, no
+  private supervisor protocol.
+
+On the native side:
+
+- a package's kind comes from its verified metadata; a user does not need to know it to install it;
+- uninstalling keeps the package's user and service data by default (on Godspeed, its folders under `/system/`
+  and `/users/`), and `delete data` says exactly what it will destroy before it does;
+- **installing or updating never grants a requested capability by itself.** Something the operator controls
+  decides, and the decision is visible.
+
+## What GodspeedOS Does Not Provide Yet
+
+The CLI must not paper over these. Each is the OS's to build, in the OS repository, under its own constitution,
+and each blocks a named part of this contract:
+
+| Missing in the OS | What it blocks here | Where the OS tracks it |
+|---|---|---|
+| Starting an image the OS did not ship with: the supervisor runs only images compiled into it | `godspeed install` on a running machine; `godspeed run` without rebuilding the OS image | `docs/service-ownership.md`, step 2 (images from `fs` as signed packages): design, not built |
+| A signature check on service images at spawn | Any trust in an installed package beyond "the registry said so" | the same step 2 |
+| A local grant policy: who decides what an installed package's requested capabilities become | "Installation respects local capability policy" | not designed |
+| A terminating task (`fn main()`, or an exit call) | `utility` and `app` templates | `docs/stdlib-design.md` 1 (options A and B) |
+| Device grants for a driver outside the OS tree | the `driver` template | the supervisor's spawn rows, by device kind |
+| A versioned public API/ABI | `[compatibility] api` | the OS's v1 work |
+
+**Until then, `godspeed run --target qemu` works by building a Godspeed image with the project embedded**, the
+way every OS service is built today. That is a development convenience, and the CLI says that is what it is
+doing: it is not installation, and it must not be presented as installation.
+
+## Failure and Recovery
+
+Publishing, downloading, installing and updating fail in ordinary ways, and each is handled: interrupted
+transfers; an unavailable registry; expired credentials; namespace conflicts; invalid signatures; digest
+mismatches; incompatible targets; partial transfers; concurrent publishes; and outcomes nobody can establish.
+
+- Operations are idempotent or reconcilable where practical.
+- **A timed-out publication is not a failure.** It may have succeeded. Before retrying, the CLI reads the
+  registry's authoritative state and reports what it finds. The same holds for installing and updating.
+- Do not invent certainty (Design Rule 5, and the OS's `OutcomeUnknown`).
+
+## Diagnostics
+
+Every refusal says what happened, why, and what to do next:
+
+    Cannot publish alice/hello@1.0.0
+    Reason:
+      Version 1.0.0 already exists.
+    Next:
+      Increment the package version and retry.
+
+    Cannot build for riscv64
+    Reason:
+      The Godspeed riscv64 target toolchain is not installed.
+    Next:
+      Run `godspeed doctor` for setup guidance.
+
+and names the stage it failed in: validation, compilation, testing, packaging, authentication, upload or
+finalisation. Internal detail is shown only when it helps the developer act.
+
+## Acceptance Criteria
+
+The CLI is not done because its commands exist. At minimum:
+
+1. Every template that ships generates a valid project, and a kind that cannot ship says why.
+2. Generated projects use only documented public interfaces.
+3. Every supported target builds.
+4. An unsupported target fails with an actionable error.
+5. Manifests are validated the same way everywhere.
+6. Artifacts can be inspected and verified independently of the CLI.
+7. First-time publisher setup works.
+8. Unauthorised publication is rejected.
+9. A published version cannot be overwritten.
+10. An interrupted publication never exposes an incomplete release.
+11. Published packages can be discovered and downloaded.
+12. Downloads are verified before installation.
+13. Installation respects local capability policy (blocked on the OS, above).
+14. Uninstalling does not silently destroy retained data.
+15. A new contributor completes the documented workflow without the maintainer's help (the Stranger Test above).
+
+Failures of the Stranger Test are evidence for improving the CLI, the SDK, the documentation or the contracts.
+Never bypass an architectural boundary to make the demonstration pass.
+
+## Scope Discipline
+
+The first milestone is the smallest complete workflow:
+
+    create -> build -> test -> package -> publish -> discover -> install -> run
+
+and its first half (create to publish, plus run in QEMU) can be built now; its second half waits on the OS.
+
+No marketplace, social features, payments, elaborate dependency ecosystem or extra infrastructure before that
+workflow works reliably. R2 is the first storage choice, not a property of the package format; Rust is the first
+implementation choice, not a reason to couple the CLI to kernel internals. The public contract should outlive
+both.
 
 ---
 
@@ -821,3 +1162,8 @@ without requiring the developer to understand how any of those mechanisms are im
 Hide implementation complexity.
 
 Never hide decision-relevant truth.
+
+The CLI handles the routine mechanics. The public SDK defines the programming contract. The registry distributes
+verified artifacts. The operating system keeps authority over what installed software may do.
+
+Make the developer experience simple. Keep the architecture honest.
