@@ -2,8 +2,10 @@ pub mod build;
 pub mod check;
 pub mod doctor;
 pub mod new;
+pub mod package;
 pub mod test;
 pub mod unavailable;
+pub mod verify;
 
 use crate::diag::{Diagnostic, Kind, Stage};
 use crate::platform::Platform;

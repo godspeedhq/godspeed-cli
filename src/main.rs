@@ -59,8 +59,20 @@ enum Command {
         #[arg(long, default_value = "qemu")]
         target: String,
     },
-    /// Build and validate distributable artifacts (not available yet)
-    Package,
+    /// Build every architecture and assemble a verified package directory
+    Package {
+        /// Package one architecture only (default: every architecture the OS supports)
+        #[arg(long, value_name = "ISA")]
+        arch: Option<String>,
+        /// Write the package here (default: target/package/<publisher>-<name>-<version>)
+        #[arg(long, value_name = "PATH")]
+        out: Option<PathBuf>,
+    },
+    /// Verify a package directory against its manifest (needs no OS checkout)
+    Verify {
+        /// The package directory
+        path: PathBuf,
+    },
     /// Publish the package to a registry (not available yet)
     Publish,
     /// Sign in as a publisher (not available yet)
@@ -171,7 +183,21 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
             .expected("qemu or hardware")
             .into()),
         },
-        Command::Package => Err(cmd::unavailable::package().into()),
+        Command::Package { arch, out } => {
+            let platform = Platform::locate(os)?;
+            let project = current_project()?;
+            let arches = cmd::build::select(&platform, arch.as_deref(), arch.is_none())?;
+            let dir = cmd::package::run(&platform, &project, &arches, out.as_deref())?;
+            let verified = cmd::verify::run(&dir)?;
+            cmd::verify::report(&verified);
+            println!("Packaged in {}", dir.display());
+            Ok(())
+        }
+        Command::Verify { path } => {
+            let verified = cmd::verify::run(&path)?;
+            cmd::verify::report(&verified);
+            Ok(())
+        }
         Command::Publish => Err(cmd::unavailable::registry("publish").into()),
         Command::Login => Err(cmd::unavailable::registry("sign in").into()),
         Command::Logout => Err(cmd::unavailable::registry("sign out").into()),

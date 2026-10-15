@@ -1,7 +1,8 @@
 # The Godspeed package format, version 1
 
-**Status: DRAFT. Implemented by `crates/godspeed-package`. Nothing produces or installs packages yet, and
-nothing here is a promise until the first package is published.**
+**Status: DRAFT. Implemented by `crates/godspeed-package`; `godspeed package` produces packages and
+`godspeed verify` checks them. Nothing installs them yet, and nothing here is a promise until the first
+package is published.**
 
 A package is one version of one Godspeed program, as files that can be inspected and verified without the
 CLI, the registry or any network. This document defines those files and the rules for reading them. The
@@ -117,6 +118,25 @@ A reader, holding a manifest it has decided to trust (how is section 3's open qu
 
 Nothing is executed, installed or written to its final place before step 3 passes. `ArtifactVerifier`
 holds only the hash state, so this runs without a heap on a Godspeed machine.
+
+### By hand, without the CLI
+
+Every check in steps 2 and 3 except the ELF machine is a size and a SHA-256, so standard tools repeat it:
+
+    $ cd alice-hello-1.0.0
+    $ grep -A3 'arch = "x86_64"' manifest.toml
+    arch = "x86_64"
+    size = 18952
+    digest = "sha256:2f3fa20d..."
+    $ wc -c < x86_64.elf
+    18952
+    $ sha256sum x86_64.elf contract.toml
+    2f3fa20d...  x86_64.elf
+    762be027...  contract.toml
+
+The digests must equal the manifest's, after its `sha256:` prefix. `godspeed verify <dir>` does all of it,
+also refuses any file the manifest does not name, and checks that each `<arch>.elf` is an ELF for that
+architecture - a mistake a digest cannot catch, since it binds whatever bytes the packager wrote.
 
 ## 5. Compatibility policy
 

@@ -23,17 +23,6 @@ pub fn run_service(verb: &str) -> Diagnostic {
     )
 }
 
-pub fn package() -> Diagnostic {
-    Diagnostic::new(
-        Kind::NotImplemented,
-        Stage::Packaging,
-        "package the project",
-        "The Godspeed package format is not defined yet: how a service's binaries, its contract and their \
-         digests are bound together is a contract to be written before any artifact is produced.",
-    )
-    .next("Use `godspeed build --all` to produce and inspect the per-architecture binaries.")
-}
-
 pub fn registry(verb: &str) -> Diagnostic {
     Diagnostic::new(
         Kind::NotImplemented,
@@ -42,7 +31,7 @@ pub fn registry(verb: &str) -> Diagnostic {
         "There is no Godspeed registry protocol yet, and publisher keys - how they are registered, rotated \
          and revoked - are not designed. Publishing comes after both, not before.",
     )
-    .next("Nothing to do yet. `godspeed build` and `godspeed check` work today.")
+    .next("Nothing to do yet. `godspeed package` builds and verifies a package locally today.")
 }
 
 /// Verbs of the native package manager, typed on a workstation.

@@ -16,6 +16,11 @@ pub struct Arch {
     pub qemu: &'static str,
     /// The environment variable the OS's own run scripts read to find that emulator, if any.
     pub qemu_env: Option<&'static str>,
+    /// The ELF `e_machine` a binary for this architecture carries, so `verify` can tell an x86 binary
+    /// filed as `riscv64.elf` from a real one.
+    pub elf_machine: u16,
+    /// The same architecture in the package contract.
+    pub package: godspeed_package::Arch,
 }
 
 pub const ARCHES: &[Arch] = &[
@@ -24,29 +29,45 @@ pub const ARCHES: &[Arch] = &[
         triple: "x86_64-unknown-none",
         qemu: "qemu-system-x86_64",
         qemu_env: None,
+        elf_machine: 0x3E,
+        package: godspeed_package::Arch::X86_64,
     },
     Arch {
         name: "aarch64",
         triple: "aarch64-unknown-none",
         qemu: "qemu-system-aarch64",
         qemu_env: Some("QEMU_AARCH64"),
+        elf_machine: 0xB7,
+        package: godspeed_package::Arch::Aarch64,
     },
     Arch {
         name: "armv7",
         triple: "armv7a-none-eabi",
         qemu: "qemu-system-arm",
         qemu_env: Some("QEMU_ARM"),
+        elf_machine: 0x28,
+        package: godspeed_package::Arch::Armv7,
     },
     Arch {
         name: "riscv64",
         triple: "riscv64imac-unknown-none-elf",
         qemu: "qemu-system-riscv64",
         qemu_env: Some("QEMU_RISCV64"),
+        elf_machine: 0xF3,
+        package: godspeed_package::Arch::Riscv64,
     },
 ];
 
 pub fn by_name(name: &str) -> Option<&'static Arch> {
     ARCHES.iter().find(|a| a.name == name)
+}
+
+/// The CLI's facts for an architecture named by a package.
+pub fn for_package(a: godspeed_package::Arch) -> &'static Arch {
+    ARCHES
+        .iter()
+        .find(|x| x.package == a)
+        .expect("every package architecture is in ARCHES (tested)")
 }
 
 pub fn names() -> String {
@@ -64,6 +85,16 @@ mod tests {
                 assert_ne!(a.name, b.name);
                 assert_ne!(a.triple, b.triple);
             }
+        }
+    }
+
+    #[test]
+    fn agrees_with_the_package_contract() {
+        assert_eq!(ARCHES.len(), godspeed_package::Arch::ALL.len());
+        for (a, p) in ARCHES.iter().zip(godspeed_package::Arch::ALL) {
+            assert_eq!(a.package, p, "same canonical order");
+            assert_eq!(a.name, p.as_str(), "same name");
+            assert_eq!(for_package(p), a);
         }
     }
 

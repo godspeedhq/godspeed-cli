@@ -202,11 +202,222 @@ fn run_and_service_test_say_the_os_cannot_do_it_yet() {
 }
 
 #[test]
-fn registry_and_packaging_are_not_implemented_and_say_so() {
+fn registry_commands_are_not_implemented_and_say_so() {
     let dir = scratch("registry");
-    for verb in ["package", "publish", "login", "logout", "whoami"] {
+    for verb in ["publish", "login", "logout", "whoami"] {
         let o = godspeed(&dir, None, &[verb]);
         assert_eq!(code(&o), 21, "{verb}");
+    }
+}
+
+#[test]
+fn package_needs_a_publisher_and_says_which_line_to_add() {
+    let dir = scratch("package_publisher");
+    let os = fixture_os();
+    assert_eq!(code(&godspeed(&dir, Some(&os), &["new", "service", "hello"])), 0);
+    let o = godspeed(&dir.join("hello"), Some(&os), &["package"]);
+    assert_eq!(code(&o), 10, "{}", stderr(&o));
+    assert!(stderr(&o).contains("publisher = \"<your-name>\""), "{}", stderr(&o));
+    assert!(!dir.join("hello/target").exists(), "refused before building anything");
+}
+
+#[test]
+fn package_refuses_a_library_with_the_reason() {
+    let dir = scratch("package_library");
+    let os = fixture_os();
+    assert_eq!(code(&godspeed(&dir, Some(&os), &["new", "library", "parser"])), 0);
+    let o = godspeed(&dir.join("parser"), Some(&os), &["package"]);
+    assert_eq!(code(&o), 21);
+    assert!(stderr(&o).contains("not defined yet"), "{}", stderr(&o));
+}
+
+// ---- verify: packages built here byte by byte, so no compiler or OS checkout is needed ----
+
+/// The first bytes of a little-endian 64-bit ELF for `machine`, padded to `len`.
+fn fake_elf(machine: u16, len: usize) -> Vec<u8> {
+    let mut b = vec![0u8; len.max(64)];
+    b[..4].copy_from_slice(b"\x7fELF");
+    b[4] = 2; // 64-bit
+    b[5] = 1; // little-endian
+    b[6] = 1; // ELF version
+    b[18..20].copy_from_slice(&machine.to_le_bytes());
+    b[24..32].copy_from_slice(&0x40_0000u64.to_le_bytes());
+    b
+}
+
+const CONTRACT: &str = "name = \"hello\"\nversion = \"1.0.0\"\n\n[resources.memory]\nrequest = \"32MiB\"\nlimit = \"32MiB\"\n\n[capabilities]\nlog_write = true\n";
+
+/// Write a valid two-architecture package for alice/hello 1.0.0 into a fresh directory.
+fn write_package(test: &str) -> PathBuf {
+    use godspeed_package as pkg;
+    let dir = scratch(test).join("alice-hello-1.0.0");
+    std::fs::create_dir_all(&dir).unwrap();
+    let files = [
+        (pkg::Arch::X86_64, fake_elf(0x3E, 300)),
+        (pkg::Arch::Riscv64, fake_elf(0xF3, 400)),
+    ];
+    let artifacts: Vec<pkg::Artifact> = files
+        .iter()
+        .map(|(arch, bytes)| pkg::Artifact {
+            arch: *arch,
+            size: bytes.len() as u64,
+            digest: pkg::Sha256Digest::of(bytes),
+        })
+        .collect();
+    for (arch, bytes) in &files {
+        std::fs::write(dir.join(arch.artifact_file()), bytes).unwrap();
+    }
+    std::fs::write(dir.join(pkg::CONTRACT_FILE), CONTRACT).unwrap();
+    let m = pkg::Manifest {
+        format: pkg::FORMAT,
+        name: pkg::PackageName::parse("alice/hello").unwrap(),
+        version: pkg::Version::new(1, 0, 0),
+        kind: pkg::Kind::Service,
+        description: Some("Says hello"),
+        license: None,
+        os_release: pkg::Version::new(0, 28, 0),
+        contract: pkg::Sha256Digest::of(CONTRACT.as_bytes()),
+        artifacts: &artifacts,
+    };
+    std::fs::write(dir.join("manifest.toml"), pkg::to_toml(&m)).unwrap();
+    dir
+}
+
+/// A tampering case: its name, what it does to a package, and what the refusal must say.
+type Tamper = (&'static str, fn(&Path), &'static str);
+
+fn verify(dir: &Path) -> Output {
+    godspeed(dir.parent().unwrap(), None, &["verify", dir.to_str().unwrap()])
+}
+
+#[test]
+fn verify_accepts_a_good_package_without_an_os_checkout() {
+    let dir = write_package("verify_good");
+    let o = verify(&dir);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    let out = String::from_utf8_lossy(&o.stdout);
+    assert!(
+        out.contains("Verified alice/hello 1.0.0 (service), built against GodspeedOS 0.28.0"),
+        "{out}"
+    );
+    assert!(out.contains("requests: log_write"), "{out}");
+    assert!(
+        out.contains("not signed yet"),
+        "the output must not imply more than integrity: {out}"
+    );
+}
+
+#[test]
+fn verify_catches_altered_bytes_as_integrity_failures() {
+    let cases: [Tamper; 4] = [
+        (
+            "flip",
+            |d| {
+                let p = d.join("riscv64.elf");
+                let mut b = std::fs::read(&p).unwrap();
+                b[200] ^= 1;
+                std::fs::write(p, b).unwrap();
+            },
+            "checksum mismatch",
+        ),
+        (
+            "truncate",
+            |d| {
+                let p = d.join("x86_64.elf");
+                let b = std::fs::read(&p).unwrap();
+                std::fs::write(p, &b[..100]).unwrap();
+            },
+            "100 of the declared 300 bytes",
+        ),
+        (
+            "pad",
+            |d| {
+                let p = d.join("x86_64.elf");
+                let mut b = std::fs::read(&p).unwrap();
+                b.push(0);
+                std::fs::write(p, b).unwrap();
+            },
+            "more than the declared 300 bytes",
+        ),
+        (
+            "contract",
+            |d| {
+                let p = d.join("contract.toml");
+                let t = std::fs::read_to_string(&p).unwrap() + "service_control = true\n";
+                std::fs::write(p, t).unwrap();
+            },
+            "is not the contract the manifest names",
+        ),
+    ];
+    for (name, tamper, says) in cases {
+        let dir = write_package(&format!("verify_integrity_{name}"));
+        tamper(&dir);
+        let o = verify(&dir);
+        assert_eq!(code(&o), 17, "{name}: {}", stderr(&o));
+        assert!(stderr(&o).contains(says), "{name}: {}", stderr(&o));
+    }
+}
+
+#[test]
+fn verify_catches_malformed_packages() {
+    let cases: [Tamper; 6] = [
+        (
+            "extra",
+            |d| std::fs::write(d.join("notes.txt"), "x").unwrap(),
+            "notes.txt is not part of the package",
+        ),
+        (
+            "missing",
+            |d| std::fs::remove_file(d.join("riscv64.elf")).unwrap(),
+            "riscv64.elf cannot be read",
+        ),
+        (
+            "no_manifest",
+            |d| std::fs::remove_file(d.join("manifest.toml")).unwrap(),
+            "manifest.toml cannot be read",
+        ),
+        (
+            "unknown_key",
+            |d| {
+                let p = d.join("manifest.toml");
+                let t = std::fs::read_to_string(&p)
+                    .unwrap()
+                    .replace("[os]\n", "[os]\nlatest = true\n");
+                std::fs::write(p, t).unwrap();
+            },
+            "unknown field `latest`",
+        ),
+        (
+            "format",
+            |d| {
+                let p = d.join("manifest.toml");
+                let t = std::fs::read_to_string(&p).unwrap().replace("format = 1", "format = 9");
+                std::fs::write(p, t).unwrap();
+            },
+            "manifest format 9",
+        ),
+        (
+            // The right bytes for the manifest, but an x86 binary filed as riscv64: the digest cannot catch
+            // a packager's mistake, so the ELF machine check must.
+            "misfiled",
+            |d| {
+                use godspeed_package as pkg;
+                let wrong = fake_elf(0x3E, 400);
+                std::fs::write(d.join("riscv64.elf"), &wrong).unwrap();
+                let p = d.join("manifest.toml");
+                let t = std::fs::read_to_string(&p).unwrap();
+                let old = pkg::Sha256Digest::of(&fake_elf(0xF3, 400)).to_string();
+                std::fs::write(p, t.replace(&old, &pkg::Sha256Digest::of(&wrong).to_string())).unwrap();
+            },
+            "riscv64.elf is an ELF for machine 0x3e, not riscv64",
+        ),
+    ];
+    for (name, tamper, says) in cases {
+        let dir = write_package(&format!("verify_malformed_{name}"));
+        tamper(&dir);
+        let o = verify(&dir);
+        assert_eq!(code(&o), 16, "{name}: {}", stderr(&o));
+        assert!(stderr(&o).contains(says), "{name}: {}", stderr(&o));
     }
 }
 
@@ -285,4 +496,53 @@ fn generated_library_tests_pass_and_it_builds_for_every_architecture() {
             "{triple}"
         );
     }
+}
+
+/// The packaging half on a real OS checkout: a generated service, given a publisher, packages for every
+/// architecture, and the package verifies on its own.
+#[test]
+#[ignore = "needs GODSPEED_OS, the pinned toolchain and network access"]
+fn generated_service_packages_and_the_package_verifies() {
+    let os = PathBuf::from(std::env::var("GODSPEED_OS").expect("set GODSPEED_OS to a GodspeedOS checkout"));
+    let dir = scratch("e2e_package");
+    assert_eq!(code(&godspeed(&dir, Some(&os), &["new", "service", "hello"])), 0);
+    let p = dir.join("hello");
+    let manifest = std::fs::read_to_string(p.join("godspeed.toml")).unwrap();
+    std::fs::write(
+        p.join("godspeed.toml"),
+        manifest.replace("# publisher = \"your-name\"", "publisher = \"alice\""),
+    )
+    .unwrap();
+
+    let o = godspeed(&p, Some(&os), &["package"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    let pkg_dir = p.join("target/package/alice-hello-0.1.0");
+    let mut files: Vec<String> = std::fs::read_dir(&pkg_dir)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    files.sort();
+    assert_eq!(
+        files,
+        [
+            "aarch64.elf",
+            "armv7.elf",
+            "contract.toml",
+            "manifest.toml",
+            "riscv64.elf",
+            "x86_64.elf"
+        ]
+    );
+    assert!(
+        !p.join("target/package/.alice-hello-0.1.0.partial").exists(),
+        "staging is moved, not left"
+    );
+
+    let o = verify(&pkg_dir);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+
+    // Packaging again replaces the previous package of this version in place.
+    assert_eq!(code(&godspeed(&p, Some(&os), &["package", "--arch", "riscv64"])), 0);
+    assert!(!pkg_dir.join("x86_64.elf").exists());
+    assert_eq!(code(&verify(&pkg_dir)), 0);
 }

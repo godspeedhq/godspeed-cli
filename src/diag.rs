@@ -16,6 +16,7 @@ pub enum Stage {
     Compilation,
     Testing,
     Packaging,
+    Verification,
     Authentication,
     Upload,
     Finalisation,
@@ -30,6 +31,7 @@ impl Stage {
             Stage::Compilation => "compilation",
             Stage::Testing => "testing",
             Stage::Packaging => "packaging",
+            Stage::Verification => "verification",
             Stage::Authentication => "authentication",
             Stage::Upload => "upload",
             Stage::Finalisation => "finalisation",
@@ -53,6 +55,10 @@ pub enum Kind {
     CompilationFailure,
     /// The tests ran and at least one failed.
     TestFailure,
+    /// A package is malformed: a missing or extra file, a manifest that breaks the format's rules.
+    InvalidPackage,
+    /// A package's bytes are not the ones its manifest names: a size or checksum mismatch.
+    IntegrityFailure,
     /// GodspeedOS does not provide what this operation needs yet. Not a bug in the project.
     NotProvidedByOs,
     /// The CLI does not implement this operation yet.
@@ -72,6 +78,8 @@ impl Kind {
             Kind::MissingDependency => 13,
             Kind::CompilationFailure => 14,
             Kind::TestFailure => 15,
+            Kind::InvalidPackage => 16,
+            Kind::IntegrityFailure => 17,
             Kind::NotProvidedByOs => 20,
             Kind::NotImplemented => 21,
             Kind::WrongProgram => 22,
@@ -209,6 +217,8 @@ mod tests {
             Kind::MissingDependency,
             Kind::CompilationFailure,
             Kind::TestFailure,
+            Kind::InvalidPackage,
+            Kind::IntegrityFailure,
             Kind::NotProvidedByOs,
             Kind::NotImplemented,
             Kind::WrongProgram,

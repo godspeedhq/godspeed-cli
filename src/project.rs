@@ -4,8 +4,9 @@
 //! - `Cargo.toml` is how Rust builds the code;
 //! - `contracts/<name>.toml` is the OS's own service contract (its schema is the OS's), and is the ONE
 //!   place the project declares the authority it requests - the CLI never keeps a second copy;
-//! - `godspeed.toml` says what kind of project this is and where its contract is, and nothing that one
-//!   of the other two already says. Name and version come from the contract.
+//! - `godspeed.toml` says what kind of project this is, where its contract is, and what a package of it
+//!   says about itself (publisher, description, license) - nothing that one of the other two already
+//!   says. Name and version come from the contract.
 
 use crate::diag::{Diagnostic, Kind, Stage};
 use serde::Deserialize;
@@ -36,6 +37,9 @@ struct RawManifest {
     format: u32,
     kind: String,
     contract: Option<String>,
+    publisher: Option<String>,
+    description: Option<String>,
+    license: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -44,6 +48,11 @@ pub struct Project {
     pub kind: ProjectKind,
     /// Relative to `root`. Present exactly when `kind` is `Service`.
     pub contract: Option<PathBuf>,
+    /// The namespace a package of this project is published under: `alice` in `alice/hello`. A claim
+    /// until a registry checks it; a package name is not an identity.
+    pub publisher: Option<String>,
+    pub description: Option<String>,
+    pub license: Option<String>,
     pub cargo: toml::Table,
 }
 
@@ -119,10 +128,22 @@ impl Project {
             )
         })?;
 
+        if let Some(p) = &raw.publisher {
+            if !godspeed_package::PackageName::is_valid_part(p) {
+                return Err(
+                    invalid("read the project", format!("{MANIFEST} names publisher \"{p}\"."))
+                        .expected("a lowercase letter, then lowercase letters, digits and '-', at most 64 bytes"),
+                );
+            }
+        }
+
         Ok(Project {
             root: root.to_path_buf(),
             kind,
             contract,
+            publisher: raw.publisher,
+            description: raw.description,
+            license: raw.license,
             cargo,
         })
     }

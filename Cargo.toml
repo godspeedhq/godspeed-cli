@@ -18,6 +18,8 @@ toml = "0.8"
 # The same validator, at the same version, that the OS's `osdev validate` uses, so a contract gets the
 # same verdict here as there. When the OS publishes its validator crate this dependency goes away.
 jsonschema = { version = "0.18", default-features = false }
+# The package contract, shared with the native package manager. `toml`: the CLI writes and reads manifests.
+godspeed-package = { path = "crates/godspeed-package", version = "0.1.0", features = ["toml"] }
 
 [profile.release]
 strip = true

@@ -24,6 +24,8 @@ says what is missing and the command that fixes it.
     godspeed build                 # x86_64
     godspeed build --arch riscv64  # aarch64, armv7, riscv64
     godspeed build --all
+    godspeed package               # needs publisher = "<you>" in godspeed.toml
+    godspeed verify target/package/<you>-hello-0.1.0
 
 ## What works, and what cannot yet
 
@@ -35,8 +37,10 @@ says what is missing and the command that fixes it.
 | `build [--arch <isa> \| --all]` | works: one ELF per architecture for a service, an rlib for a library |
 | `test` | works for a library (on the host); refused for a service (see below) |
 | `doctor` | works |
+| `package [--arch <isa>] [--out <dir>]` | works: builds every architecture, writes a package directory, and verifies it from disk before reporting it |
+| `verify <dir>` | works, with no OS checkout: checks every file against the manifest, and says it proves integrity only |
 | `run` | refused: GodspeedOS has no public way to run a service built outside its tree |
-| `package`, `publish`, `login`, `logout`, `whoami` | not implemented: the package format and registry protocol are not defined yet |
+| `publish`, `login`, `logout`, `whoami` | not implemented: the registry protocol and publisher keys are not designed yet |
 | `install`, `search`, `info`, `list`, `update`, `uninstall` | belong to the native package manager on a Godspeed machine, and say so |
 
 Running a service needs an OS build interface that takes a crate from outside the OS tree. Until
@@ -44,7 +48,8 @@ GodspeedOS has one, `godspeed run` says so rather than editing the OS for you.
 
 ## A project
 
-    godspeed.toml            what kind of project this is, and where its contract is
+    godspeed.toml            what kind of project this is, where its contract is, and the publisher,
+                             description and license a package of it carries
     Cargo.toml               how Rust builds it; depends on the `godspeed` stdlib at an OS release tag
     contracts/<name>.toml    (services) the OS service contract: the authority the service REQUESTS
     rust-toolchain.toml      the compiler that OS release is built with
@@ -58,8 +63,8 @@ The contract grants nothing. What a service is actually given is the operating s
 artifact verification. It is shared with the native package manager, so it is `no_std` and never
 allocates (CI builds it for all four Godspeed targets and checks its dependency tree); reading and writing
 the manifest's TOML is a host-only feature. The format, and what it deliberately leaves out, is in
-[docs/package-format.md](docs/package-format.md). Nothing produces packages yet: `godspeed package`
-comes next.
+[docs/package-format.md](docs/package-format.md). `godspeed package` produces packages with it and
+`godspeed verify` checks them.
 
 ## Exit codes
 
@@ -75,6 +80,8 @@ Scripts and CI can tell failures apart without reading the text:
 | 13 | a dependency could not be fetched |
 | 14 | compilation failure |
 | 15 | test failure |
+| 16 | invalid package: a missing or extra file, a manifest that breaks the format |
+| 17 | integrity failure: a size or checksum mismatch |
 | 20 | GodspeedOS does not provide this yet |
 | 21 | this CLI does not implement this yet |
 | 22 | this is the native package manager's command, not this CLI's |
