@@ -5,16 +5,46 @@ and build Godspeed projects on your workstation, against the public contracts of
 
 The rules it is built to are in [CLAUDE.md](CLAUDE.md).
 
+## Install
+
+Linux or macOS:
+
+    curl --proto '=https' --tlsv1.2 -sSf https://github.com/godspeedhq/godspeed-cli/releases/latest/download/install.sh | sh
+
+Windows (PowerShell):
+
+    irm https://github.com/godspeedhq/godspeed-cli/releases/latest/download/install.ps1 | iex
+
+Either installs one prebuilt binary to `~/.godspeed/bin` (`%USERPROFILE%\.godspeed\bin` on Windows), after
+checking it against the release's `SHA256SUMS` - a mismatch, or no way to check, installs nothing - and
+adds that folder to your PATH, saying which files it changed. Both scripts are short and say at the top
+what they do; read them first if you like (`install/`). Settings: `GODSPEED_VERSION`,
+`GODSPEED_INSTALL_DIR`, `GODSPEED_NO_MODIFY_PATH=1`. Builds exist for x86_64 and Arm64 Linux (static, any
+distribution), macOS on Apple silicon and Intel, and x64 and Arm64 Windows.
+
+Or build it yourself with Rust:
+
+    cargo install --git https://github.com/godspeedhq/godspeed-cli --locked godspeed-cli
+
+A checksum proves a download is the file the release lists; releases are not signed yet.
+
 ## Setup
 
     git clone https://github.com/godspeedhq/godspeed-os
     export GODSPEED_OS=/path/to/godspeed-os      # or pass --os <path> to every command
-    cargo install --path .                       # from this repository
     godspeed doctor
 
 The CLI builds against the OS checkout you name: its stdlib release, its pinned Rust toolchain, its
 target list and its contract schema. It reads that checkout and never writes to it. `godspeed doctor`
-says what is missing and the command that fixes it.
+says what is missing and the command that fixes it. (Needing a checkout at all is temporary:
+[docs/no-checkout.md](docs/no-checkout.md).)
+
+## Releasing
+
+Push a tag `cli-v<version>`, equal to the version in `Cargo.toml`. `.github/workflows/release.yml` builds
+all six binaries, runs each where it can, tests both installers against exactly those binaries on Linux,
+macOS and Windows, and then creates a **draft** release. Nothing is public until the draft is published;
+the installers' `releases/latest` never resolves to a draft.
 
 ## Use
 

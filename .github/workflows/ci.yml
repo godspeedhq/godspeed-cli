@@ -18,9 +18,9 @@ name: ci
 on:
   push:
     branches: [main]
-    paths-ignore: ['*.md', 'docs/**', 'LICENSE']
+    paths-ignore: ['*.md', 'docs/**', 'install/**', 'LICENSE']
   pull_request:
-    paths-ignore: ['*.md', 'docs/**', 'LICENSE']
+    paths-ignore: ['*.md', 'docs/**', 'install/**', 'LICENSE']
   workflow_dispatch:
 
 permissions:

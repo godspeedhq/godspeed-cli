@@ -1,0 +1,52 @@
+name: installers
+
+# install.sh and install.ps1, tested on the three platforms whenever they change: a CLI built here, served
+# as a fake release on localhost, installed the documented way (PATH edits included - these runners are
+# thrown away), reinstalled, and refused when SHA256SUMS does not match. The release workflow runs the same
+# tests against the real release binaries before it drafts a release.
+
+on:
+  pull_request:
+    paths: ['install/**', '.github/workflows/installers.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  installers:
+    name: Installers on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-musl }
+          - { os: macos-latest, target: aarch64-apple-darwin }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc }
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build the CLI as a release asset
+        shell: bash
+        run: |
+          rustup toolchain install stable --profile minimal --target ${{ matrix.target }}
+          rustup default stable
+          cargo build --locked --target ${{ matrix.target }}
+          mkdir dist
+          ext=""
+          case "${{ matrix.target }}" in *windows*) ext=".exe" ;; esac
+          cp "target/${{ matrix.target }}/debug/godspeed$ext" "dist/godspeed-${{ matrix.target }}$ext"
+          cd dist
+          if command -v sha256sum > /dev/null; then sha256sum godspeed-*; else shasum -a 256 godspeed-*; fi \
+            | sed 's/ \*/  /' > SHA256SUMS
+      - name: install.sh
+        if: runner.os != 'Windows'
+        run: bash install/test/installers.sh dist
+      - name: install.ps1
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./install/test/installers.ps1 -Dist dist
