@@ -53,6 +53,9 @@ enum Command {
         /// Create it here instead of in ./<name>
         #[arg(long, value_name = "PATH")]
         dir: Option<PathBuf>,
+        /// The namespace a package of it is published under (a service's `publisher` in godspeed.toml)
+        #[arg(long, value_name = "NAME")]
+        publisher: Option<String>,
     },
     /// Validate the project, its contract and its toolchain, without building
     Check,
@@ -81,6 +84,9 @@ enum Command {
         /// Write the package here (default: target/package/<publisher>-<name>-<version>)
         #[arg(long, value_name = "PATH")]
         out: Option<PathBuf>,
+        /// Print the result as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Sign a package directory with your signing key (`publish` signs for you)
     Sign {
@@ -97,6 +103,9 @@ enum Command {
         /// On first contact with a registry, trust its root 1 only if it has this digest (sha256:...)
         #[arg(long, value_name = "DIGEST")]
         trust_root: Option<String>,
+        /// Print the result as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Make or show your signing key
     Key {
@@ -213,7 +222,11 @@ impl Command {
     fn json(&self) -> bool {
         matches!(
             self,
-            Command::Verify { json: true, .. } | Command::Whoami { json: true } | Command::Doctor { json: true }
+            Command::Verify { json: true, .. }
+                | Command::Whoami { json: true }
+                | Command::Doctor { json: true }
+                | Command::Package { json: true, .. }
+                | Command::Fetch { json: true, .. }
         )
     }
 }
@@ -253,9 +266,14 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
     let os = cli.os.as_deref();
     let reg = cli.registry.as_deref();
     match cli.command {
-        Command::New { kind, name, dir } => {
+        Command::New {
+            kind,
+            name,
+            dir,
+            publisher,
+        } => {
             let platform = Platform::locate(os)?;
-            let root = cmd::new::run(&platform, &kind, &name, dir.as_deref())?;
+            let root = cmd::new::run(&platform, &kind, &name, dir.as_deref(), publisher.as_deref())?;
             println!(
                 "Created {kind} {name} in {} (GodspeedOS {})",
                 root.display(),
@@ -310,14 +328,20 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
             .expected("qemu or hardware")
             .into()),
         },
-        Command::Package { arch, out } => {
+        Command::Package { arch, out, json } => {
             let platform = Platform::locate(os)?;
             let project = current_project()?;
             let arches = cmd::build::select(&platform, arch.as_deref(), arch.is_none())?;
             let dir = cmd::package::run(&platform, &project, &arches, out.as_deref())?;
             let verified = cmd::verify::run(&dir)?;
-            cmd::verify::report(&verified);
-            println!("Packaged in {}", dir.display());
+            if json {
+                let mut doc = cmd::verify::to_json(&verified);
+                doc["dir"] = dir.display().to_string().into();
+                println!("{doc:#}");
+            } else {
+                cmd::verify::report(&verified);
+                println!("Packaged in {}", dir.display());
+            }
             Ok(())
         }
         Command::Sign { path } => cmd::sign::run(&path),
@@ -325,7 +349,8 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
             package,
             out,
             trust_root,
-        } => cmd::fetch::run(&package, reg, out.as_deref(), trust_root.as_deref()),
+            json,
+        } => cmd::fetch::run(&package, reg, out.as_deref(), trust_root.as_deref(), json),
         Command::Key { action } => match action {
             KeyAction::Generate => cmd::sign::key_generate(),
             KeyAction::Show => cmd::sign::key_show(),
