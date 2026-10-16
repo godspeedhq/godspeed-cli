@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Godspeed CLI</title>
+<meta name="description" content="godspeed, the developer CLI for GodspeedOS: create, build, package, sign and publish Godspeed software, and verify anyone's.">
+<link rel="stylesheet" href="style.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="./"><span class="mark">g</span>Godspeed CLI</a>
+    <nav class="main">
+      <a href="./" aria-current="page">Overview</a>
+      <a href="examples.html">Examples</a>
+      <a href="publishing.html">Publishing</a>
+      <a href="reference.html">Reference</a>
+      <a href="https://github.com/godspeedhq/godspeed-cli">GitHub</a>
+    </nav>
+    <button class="theme-toggle" type="button">Dark</button>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="hero">
+    <h1>Build for GodspeedOS without learning its insides.</h1>
+    <p class="lede"><code>godspeed</code> creates, builds, packages, signs and publishes software for
+    <a href="https://github.com/godspeedhq/godspeed-os">GodspeedOS</a> - for all four of its architectures at
+    once - using only the OS's public contracts. You never touch the kernel, raw IPC or the supervisor.</p>
+<pre><span class="p">$ </span>godspeed new service hello
+<span class="p">$ </span>cd hello
+<span class="p">$ </span>godspeed build --all      <span class="c"># x86_64, aarch64, armv7, riscv64</span>
+<span class="p">$ </span>godspeed publish          <span class="c"># signed, uploaded, installable as you/hello</span></pre>
+    <div class="cta">
+      <a class="button" href="#start">Get started</a>
+      <a class="button secondary" href="examples.html">See what you can build</a>
+    </div>
+  </section>
+
+  <h2 id="what">What you can build today</h2>
+  <p>Godspeed has five kinds of project. The CLI makes a template only for a kind the OS can actually run, and
+  says plainly why the others must wait - it never generates a project that cannot do what its kind
+  promises.</p>
+  <div class="grid">
+    <div class="card">
+      <h3>Service <span class="tag ok">works</span></h3>
+      <p>A managed program with a lifecycle and a declared request for authority. Every runnable program on
+      Godspeed is a service today.</p>
+      <p><code>godspeed new service clock</code></p>
+    </div>
+    <div class="card">
+      <h3>Library <span class="tag ok">works</span></h3>
+      <p>Reusable <code>no_std</code> Rust for other Godspeed projects. Its tests run on your workstation.</p>
+      <p><code>godspeed new library parser</code></p>
+    </div>
+    <div class="card">
+      <h3>Utility <span class="tag no">waits on the OS</span></h3>
+      <p>A program that does one job and ends. GodspeedOS has no terminating task yet.</p>
+    </div>
+    <div class="card">
+      <h3>App <span class="tag no">waits on the OS</span></h3>
+      <p>A user-facing program. There are no public application interfaces yet.</p>
+    </div>
+    <div class="card">
+      <h3>Driver <span class="tag no">waits on the OS</span></h3>
+      <p>A userspace driver. A driver from outside the OS tree has no way yet to be granted a device.</p>
+    </div>
+  </div>
+  <p>Ask for one that must wait and you get the reason, where the OS tracks it, and what to do instead:</p>
+<pre><span class="p">$ </span>godspeed new utility status
+<span class="o">Cannot create a utility project
+Stage: validation
+Reason:
+  A utility is a program that does one job and ends. GodspeedOS has no terminating task yet: every
+  program is a service that never returns, and there is no way for a program to end itself.
+Expected:
+  tracked in GodspeedOS docs/stdlib-design.md, section 1 (options A and B)
+Next:
+  Create a `service` instead - every runnable program on Godspeed is a service today.</span></pre>
+  <p><a href="examples.html">The examples</a> show real services and libraries, each built for every
+  architecture in CI.</p>
+
+  <h2 id="start">Get started</h2>
+  <ol class="steps">
+    <li>
+      <h3>Install Rust and the CLI</h3>
+      <p>You need <a href="https://rustup.rs">Rust</a> and nothing else. No release of the CLI has been cut
+      yet, so build it with Cargo:</p>
+<pre><span class="p">$ </span>cargo install --git https://github.com/godspeedhq/godspeed-cli --branch feat/cli-foundation --locked godspeed-cli</pre>
+      <p class="small muted">Once the first release is out, a one-line installer will fetch a prebuilt
+      binary for Linux, macOS or Windows (x86_64 or Arm64) and check it against the release's checksums.</p>
+    </li>
+    <li>
+      <h3>Point it at a GodspeedOS release</h3>
+      <p>The CLI builds against an OS checkout - its standard library release, its pinned compiler and its
+      contract schema. It reads that checkout and never writes to it.</p>
+<pre><span class="p">$ </span>git clone --branch v0.28.0 https://github.com/godspeedhq/godspeed-os
+<span class="p">$ </span>export GODSPEED_OS=$PWD/godspeed-os      <span class="c"># Windows: $env:GODSPEED_OS = "$PWD\godspeed-os"</span>
+<span class="p">$ </span>godspeed doctor</pre>
+      <p><code>doctor</code> checks the toolchain, all four targets and QEMU, and prints the command that
+      fixes anything missing. (On Windows, run <code>git config --global core.longpaths true</code> first:
+      the OS repository has some long file names.)</p>
+    </li>
+    <li>
+      <h3>Create and build</h3>
+<pre><span class="p">$ </span>godspeed new service hello
+<span class="o">Created service hello in hello (GodspeedOS v0.28.0)</span>
+<span class="p">$ </span>cd hello
+<span class="p">$ </span>godspeed check
+<span class="o">service hello is valid against GodspeedOS v0.28.0.</span>
+<span class="p">$ </span>godspeed build
+<span class="o">Validating project...
+Fetching dependencies...
+Building hello for x86_64 (x86_64-unknown-none)...
+Built x86_64 target/x86_64-unknown-none/release/hello
+These are service binaries, not an OS image; nothing was installed or run.</span></pre>
+      <p>It is an ordinary Rust project, so <code>cargo fmt</code> and <code>cargo clippy</code> work in it
+      as usual, with the compiler the OS pins.</p>
+    </li>
+    <li>
+      <h3>Package it, and look before anything leaves your machine</h3>
+<pre><span class="p">$ </span>godspeed package
+<span class="o">Verified alice/hello 0.1.0 (service), built against GodspeedOS 0.28.0
+  contract.toml              sha256:762be027...
+                 requests: log_write
+  x86_64.elf        18952 B  sha256:2f3fa20d...
+  aarch64.elf       78760 B  sha256:d0896436...
+  armv7.elf         16644 B  sha256:b1443f11...
+  riscv64.elf       30968 B  sha256:ba2ac5b2...
+What the contract requests is not granted by installing it.</span></pre>
+    </li>
+    <li>
+      <h3>Publish</h3>
+      <p>Make a signing key and a token once, then <code>godspeed publish</code>.
+      <a href="publishing.html">Publishing</a> walks through it.</p>
+    </li>
+  </ol>
+
+  <h2 id="status">What works, and what waits</h2>
+  <p>The first half of the workflow works end to end, against the live registry. The second half needs
+  things only the OS can provide, and the CLI will not paper over them.</p>
+  <div class="table-scroll"><table>
+    <tr><th>Step</th><th>Status</th></tr>
+    <tr><td>Create, check, build for every architecture</td><td><span class="tag ok">works</span></td></tr>
+    <tr><td>Test a library</td><td><span class="tag ok">works</span></td></tr>
+    <tr><td>Package, sign, verify</td><td><span class="tag ok">works</span></td></tr>
+    <tr><td>Publish, and fetch with every signature checked</td><td><span class="tag ok">works</span></td></tr>
+    <tr><td>Test a service</td><td><span class="tag no">waits on the OS</span> a service runs only on a Godspeed machine</td></tr>
+    <tr><td><code>godspeed run</code></td><td><span class="tag no">waits on the OS</span> no public way to run a service built outside the OS tree</td></tr>
+    <tr><td><code>godspeed install</code> on a Godspeed machine</td><td><span class="tag no">waits on the OS</span> the OS starts only the programs it was built with</td></tr>
+  </table></div>
+
+  <h2 id="languages">Can I use C, C++ or Go?</h2>
+  <p><strong>Not yet.</strong> A Godspeed program today is Rust, because the only public way to talk to
+  GodspeedOS is its Rust standard library, <code>gs</code>. Nothing else about the CLI is tied to Rust: a
+  package is a contract plus one ELF per architecture, and the format does not care what compiled them.</p>
+  <ul>
+    <li><strong>C and C++</strong> need a C interface to <code>gs</code> - a header and a library - and a
+    freestanding compiler for each architecture. That is a plausible addition, and it is the OS's to
+    define. Once it exists, the CLI gains a second way to build, and packaging and publishing stay exactly
+    as they are.</li>
+    <li><strong>Go</strong> needs much more: its runtime - scheduler, garbage collector, system interface -
+    ported to GodspeedOS, which has no POSIX layer and no heap for services.</li>
+  </ul>
+  <p>Until the OS defines one of those, the CLI does not offer a C, C++ or Go template: it would be one that
+  cannot do what it promises.</p>
+
+  <h2 id="principles">How it behaves</h2>
+  <div class="grid">
+    <div class="card"><h3>Requests, never grants</h3><p>A contract asks for authority. What a program is
+    actually given is the operating system's decision, never the package's or the CLI's.</p></div>
+    <div class="card"><h3>Every refusal is actionable</h3><p>What failed, why, what was expected, and what to
+    do next - with a distinct exit code for scripts and CI.</p></div>
+    <div class="card"><h3>No invented certainty</h3><p>If a publish times out, the CLI reads the registry and
+    reports what it finds. "Outcome unknown" is an answer, not a failure.</p></div>
+    <div class="card"><h3>No cloud lock-in</h3><p>The CLI speaks the registry protocol, never a storage
+    provider's API. A package can be hosted by any registry or mirror.</p></div>
+  </div>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    Godspeed CLI is free software under the GPL-2.0.
+    <a href="https://github.com/godspeedhq/godspeed-cli">Source</a> ·
+    <a href="https://github.com/godspeedhq/godspeed-os">GodspeedOS</a> ·
+    <a href="https://github.com/godspeedhq/godspeed-registry">Registry</a>
+  </div>
+</footer>
+</body>
+</html>

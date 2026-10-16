@@ -12,15 +12,15 @@ name: ci
 #                service built outside its tree), so for a service this job proves the build and checks
 #                each binary's machine and entry point - it does not claim more.
 
-# Frugal by design: a change to prose only (top-level *.md, docs/, LICENSE) runs nothing.
+# Frugal by design: a change to prose only (top-level *.md, docs/, site/, LICENSE) runs nothing.
 # `*.md` matches the repository root only, so a template's README - which ships inside generated
 # projects - still runs the full workflow.
 on:
   push:
     branches: [main]
-    paths-ignore: ['*.md', 'docs/**', 'install/**', 'LICENSE']
+    paths-ignore: ['*.md', 'docs/**', 'install/**', 'site/**', 'LICENSE']
   pull_request:
-    paths-ignore: ['*.md', 'docs/**', 'install/**', 'LICENSE']
+    paths-ignore: ['*.md', 'docs/**', 'install/**', 'site/**', 'LICENSE']
   workflow_dispatch:
 
 permissions:
@@ -136,3 +136,18 @@ jobs:
         env:
           GODSPEED_OS: ${{ github.workspace }}/godspeed-os
         run: cargo test --locked --test cli -- --ignored
+
+      # The examples the guide (site/) explains: each checked and built for every architecture, and a
+      # library's tests run, exactly as a developer would - so the guide never shows code that does not
+      # compile against a release it claims to support.
+      - name: Check and build every example
+        env:
+          GODSPEED_OS: ${{ github.workspace }}/godspeed-os
+        run: |
+          godspeed="$PWD/target/debug/godspeed"
+          for dir in examples/*/; do
+            echo "::group::$dir"
+            (cd "$dir" && "$godspeed" check && "$godspeed" build --all)
+            if grep -q '^kind *= *"library"' "$dir/godspeed.toml"; then (cd "$dir" && "$godspeed" test); fi
+            echo "::endgroup::"
+          done

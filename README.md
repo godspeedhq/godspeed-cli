@@ -1,13 +1,29 @@
 # godspeed-cli
 
-`godspeed`, the developer CLI for [GodspeedOS](https://github.com/godspeedhq/godspeed-os): create, check
-and build Godspeed projects on your workstation, against the public contracts of a GodspeedOS release.
+`godspeed`, the developer CLI for [GodspeedOS](https://github.com/godspeedhq/godspeed-os): create, check,
+build, package, sign and publish Godspeed software on your workstation, against the public contracts of a
+GodspeedOS release - and fetch anyone's published package with every signature checked.
 
-The rules it is built to are in [CLAUDE.md](CLAUDE.md).
+    godspeed new service hello && cd hello
+    godspeed build --all          # one binary per architecture: x86_64, aarch64, armv7, riscv64
+    godspeed publish              # signed, uploaded, and installable as you/hello
+
+**Guide and examples: [godspeedhq.github.io/godspeed-cli](https://godspeedhq.github.io/godspeed-cli/)**
+(source in [`site/`](site/)). The rules the CLI is built to are in [CLAUDE.md](CLAUDE.md).
+
+**Status:** the first half of the workflow works end to end - create, check, build, test (libraries),
+package, sign, publish, fetch - against the live registry. Installing and running on a Godspeed machine
+waits on the OS ([below](#what-works-and-what-cannot-yet)). Godspeed programs are written in Rust today
+([why, and what about C, C++ or Go](#other-languages)).
 
 ## Install
 
-Linux or macOS:
+**No release has been cut yet**, so the installers below have nothing to fetch until the first
+`cli-v*` release; until then, build it with Rust:
+
+    cargo install --git https://github.com/godspeedhq/godspeed-cli --branch feat/cli-foundation --locked godspeed-cli
+
+Once released - Linux or macOS:
 
     curl --proto '=https' --tlsv1.2 -sSf https://github.com/godspeedhq/godspeed-cli/releases/latest/download/install.sh | sh
 
@@ -62,6 +78,12 @@ the installers' `releases/latest` never resolves to a draft.
     godspeed package               # needs publisher = "<you>" in godspeed.toml
     godspeed verify target/package/<you>-hello-0.1.0
 
+It is an ordinary Rust project, so `cargo fmt` and `cargo clippy` work in it as usual.
+
+[`examples/`](examples/) has real services and a library to start from - a periodic logger, a
+request/reply server, a service that keeps state in a file, and a no-heap text buffer - each built for
+every architecture in CI and explained on the [examples page](https://godspeedhq.github.io/godspeed-cli/examples.html).
+
 ## What works, and what cannot yet
 
 | command | status |
@@ -109,8 +131,18 @@ fingerprint (its SHA-256), which is all the registry stores. `login` keeps it in
 again is safe - it reports whether the token is still waiting, and makes a new one only if the old can never
 work again. For CI, `godspeed token new` prints a token once and stores nothing: put it in a CI secret as
 `GODSPEED_TOKEN`, and send the fingerprint as usual. The CLI holds a publisher token only - never storage
-credentials. The registry is the `godspeed-registry` service; there is no default until the official one is
-deployed, so name it with `--registry`, `GODSPEED_REGISTRY`, or once with `login`.
+credentials.
+
+The official registry ([godspeed-registry](https://github.com/godspeedhq/godspeed-registry)) is live at
+
+    https://godspeed-registry.bankole-422.workers.dev
+
+That address is temporary - it moves to a custom domain - so the CLI has no built-in default yet: name it
+with `--registry`, `GODSPEED_REGISTRY`, or once with `login`. Publishers and their namespaces are approved
+by hand for now, by the registry's maintainer. Its trust root, to pin on first contact:
+
+    godspeed fetch godspeed/hello --registry <url> \
+      --trust-root sha256:d769d1a64c3105c8da0ffcc2f54aba1c3a16ce4ae707a6d206556f08824a146d
 
 Every release is signed with your key (`manifest.sig`), and the registry refuses one that is not signed by a
 key registered for your namespace. Your secret key stays in `signing-key.toml` beside the credentials,
@@ -119,6 +151,23 @@ signed; which keys may sign for a publisher is the registry's offline-signed nam
 the registry cannot alter. `godspeed fetch alice/hello` checks all of it the way a Godspeed machine will
 before installing: root (trusted on first contact - pin it with `--trust-root`), timestamp, snapshot,
 namespaces, index, manifest, signature, files ([docs/trust-metadata.md](docs/trust-metadata.md)).
+
+## Other languages
+
+**Today a Godspeed program is Rust, and the CLI builds Rust.** Not because the CLI insists - the package
+format is just a contract and one ELF per architecture, and does not care what compiled them - but because
+the only public way to talk to GodspeedOS is its Rust standard library, `gs`. A program in another
+language would need that interface in a form its compiler can call, and GodspeedOS does not provide one
+yet:
+
+- **C and C++** would need a C ABI over `gs` (a header and a static library) and a freestanding toolchain
+  per architecture. That is a plausible addition, it is the OS's to define, and the CLI would then gain a
+  second build backend without any change to packages or publishing.
+- **Go** would need much more: a port of the Go runtime (its scheduler, garbage collector and system
+  interface) to GodspeedOS, which has no heap for services and no POSIX layer.
+
+Until the OS defines one of those, the CLI does not pretend: it builds Rust projects, and a C, C++ or Go
+"template" would be one that cannot do what it promises.
 
 ## The package contract
 

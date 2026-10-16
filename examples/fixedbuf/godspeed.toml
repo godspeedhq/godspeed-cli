@@ -1,0 +1,4 @@
+# Godspeed project manifest. It says what kind of project this is.
+# A library is not spawned, so it has no contract and requests no authority of its own.
+format = 1
+kind   = "library"

@@ -353,8 +353,7 @@ pub fn refused(doing: &str, registry: &str, r: &Refusal) -> Diagnostic {
         "version-exists" => (
             Kind::Conflict,
             Stage::Upload,
-            "Increment the version (in the contract and Cargo.toml) and publish again. Published versions never change."
-                .into(),
+            "Increment the version (in the contract and Cargo.toml) and publish again.".into(),
         ),
         "version-being-published" => (
             Kind::Conflict,
@@ -406,7 +405,10 @@ pub fn refused(doing: &str, registry: &str, r: &Refusal) -> Diagnostic {
         _ => (
             Kind::Conflict,
             Stage::Upload,
-            format!("The registry answered with `{}`, which this CLI does not know. Update the CLI.", r.error),
+            format!(
+                "The registry answered with `{}`, which this CLI does not know. Update the CLI.",
+                r.error
+            ),
         ),
     };
     Diagnostic::new(kind, stage, doing.to_string(), r.message.clone()).next(next)

@@ -1,0 +1,11 @@
+[package]
+name = "fixedbuf"
+version = "0.1.0"
+edition = "2021"
+description = "Text built into a fixed-size buffer, for Godspeed programs with no heap"
+
+[lib]
+path = "src/lib.rs"
+
+# This project is its own workspace, wherever it is created.
+[workspace]

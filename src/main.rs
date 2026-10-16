@@ -23,7 +23,11 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 #[derive(Parser)]
-#[command(name = "godspeed", version, about = "Create, check and build GodspeedOS projects")]
+#[command(
+    name = "godspeed",
+    version,
+    about = "Create, build, package and publish GodspeedOS software, and verify anyone's"
+)]
 struct Cli {
     /// The GodspeedOS checkout to build against. Defaults to the GODSPEED_OS environment variable.
     #[arg(long, global = true, value_name = "PATH")]
