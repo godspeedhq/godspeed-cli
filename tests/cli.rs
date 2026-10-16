@@ -23,8 +23,12 @@ fn scratch(test: &str) -> PathBuf {
     dir
 }
 
+/// Never a GodspeedOS release server: the tests reach GitHub for nothing.
+const NO_OS_SERVER: &str = "http://127.0.0.1:9";
+
 /// The CLI, isolated from the developer's own setup: no OS checkout, registry or token from the environment,
-/// and a configuration directory of its own, so no test reads or writes real credentials.
+/// a configuration directory and a cache of its own, so no test reads or writes real credentials, and no
+/// GodspeedOS release server unless a test starts one.
 fn command(dir: &Path, os: Option<&Path>, args: &[&str]) -> Command {
     let mut c = Command::new(env!("CARGO_BIN_EXE_godspeed"));
     c.current_dir(dir)
@@ -32,7 +36,9 @@ fn command(dir: &Path, os: Option<&Path>, args: &[&str]) -> Command {
         .env_remove("GODSPEED_REGISTRY")
         .env_remove("GODSPEED_TOKEN")
         .env_remove("GODSPEED_SIGNING_KEY")
-        .env("GODSPEED_CONFIG_DIR", dir.join(".godspeed-config"));
+        .env("GODSPEED_CONFIG_DIR", dir.join(".godspeed-config"))
+        .env("GODSPEED_CACHE_DIR", dir.join(".godspeed-cache"))
+        .env("GODSPEED_TEST_OS_URL", NO_OS_SERVER);
     if let Some(os) = os {
         c.arg("--os").arg(os);
     }
@@ -230,11 +236,13 @@ fn check_refuses_a_toolchain_the_os_is_not_built_with() {
 }
 
 #[test]
-fn without_an_os_checkout_the_cli_says_how_to_name_one() {
+fn offline_with_nothing_cached_the_cli_says_what_it_needs() {
     let dir = scratch("no_os");
     let o = godspeed(&dir, None, &["new", "service", "hello"]);
-    assert_eq!(code(&o), 11);
-    assert!(stderr(&o).contains("GODSPEED_OS"));
+    assert_eq!(code(&o), 13, "{}", stderr(&o));
+    assert!(stderr(&o).contains("no GodspeedOS release is cached"), "{}", stderr(&o));
+    assert!(stderr(&o).contains("--os <path>"), "{}", stderr(&o));
+    assert!(!dir.join("hello").exists());
     let o = godspeed(&dir, Some(&dir), &["new", "service", "hello"]);
     assert_eq!(code(&o), 11);
     assert!(stderr(&o).contains("does not look like a GodspeedOS checkout"));
@@ -915,6 +923,8 @@ fn run_installed(home: &Path, exe: &Path, releases: Option<&str>, args: &[&str])
         .env("USERPROFILE", home)
         .env("CARGO_HOME", home.join(".cargo"))
         .env("GODSPEED_CONFIG_DIR", home.join("config"))
+        .env("GODSPEED_CACHE_DIR", home.join("cache"))
+        .env("GODSPEED_TEST_OS_URL", NO_OS_SERVER)
         .env_remove("GODSPEED_TEST_RELEASES_URL")
         .stdin(std::process::Stdio::null())
         .args(args);
@@ -1028,6 +1038,9 @@ fn self_uninstall_removes_what_the_installer_added_and_keeps_the_keys() {
     let config = home.join("config");
     std::fs::create_dir_all(&config).unwrap();
     std::fs::write(config.join("signing-key.toml"), "kept").unwrap();
+    let kit = home.join("cache").join("platform").join("0.28.0");
+    std::fs::create_dir_all(&kit).unwrap();
+    std::fs::write(home.join("cache").join("other-tool-data"), "not ours").unwrap();
     let profile = home.join(".profile");
     let line = "export PATH=\"$HOME/.godspeed/bin:$PATH\"  # added by the godspeed installer";
     std::fs::write(&profile, format!("export A=1\n\n{line}\n")).unwrap();
@@ -1048,6 +1061,14 @@ fn self_uninstall_removes_what_the_installer_added_and_keeps_the_keys() {
     assert_eq!(
         std::fs::read_to_string(config.join("signing-key.toml")).unwrap(),
         "kept"
+    );
+    assert!(
+        !home.join("cache").join("platform").exists(),
+        "the cached kits are removed"
+    );
+    assert!(
+        home.join("cache").join("other-tool-data").exists(),
+        "and nothing else in the cache folder"
     );
     if cfg!(unix) {
         assert_eq!(std::fs::read_to_string(&profile).unwrap(), "export A=1\n");
@@ -1216,4 +1237,118 @@ fn publish_reconciles_an_unanswered_finalise_and_a_dry_run_uploads_nothing() {
     assert_eq!(code(&o), 0, "{}", stderr(&o));
     assert!(stderr(&o).contains("did not answer finalisation"), "{}", stderr(&o));
     assert!(stdout(&o).contains("Published alice/hello@0.1.0"), "{}", stdout(&o));
+}
+
+// ---- the platform kit: no OS checkout needed ---------------------------------------------------------
+
+/// What the stand-in GodspeedOS release server saw.
+#[derive(Default)]
+struct OsServer {
+    /// Paths asked for, in order.
+    asked: Vec<String>,
+}
+
+/// A stand-in for GitHub: `releases/latest` is v0.28.0, the tag is commit `c0ffee...`, and `raw/<commit>/...`
+/// serves the fixture OS. Returns the address for GODSPEED_TEST_OS_URL.
+fn os_server(state: std::sync::Arc<std::sync::Mutex<OsServer>>) -> String {
+    use std::io::{BufRead, BufReader, Write};
+    const COMMIT: &str = "c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00";
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut request = String::new();
+            let _ = reader.read_line(&mut request);
+            loop {
+                let mut header = String::new();
+                if reader.read_line(&mut header).unwrap_or(0) <= 2 {
+                    break;
+                }
+            }
+            let path = request.split_whitespace().nth(1).unwrap_or("").to_string();
+            state.lock().unwrap().asked.push(path.clone());
+            let file = path
+                .strip_prefix(&format!("/raw/{COMMIT}/"))
+                .map(|rel| fixture_os().join(rel))
+                .and_then(|p| std::fs::read(p).ok());
+            let (status, extra, body) = match path.as_str() {
+                "/releases/latest" => (
+                    "302 Found",
+                    "Location: https://github.com/godspeedhq/godspeed-os/releases/tag/v0.28.0\r\n".to_string(),
+                    Vec::new(),
+                ),
+                "/commits/v0.28.0" => ("200 OK", String::new(), COMMIT.as_bytes().to_vec()),
+                _ => match file {
+                    Some(b) => ("200 OK", String::new(), b),
+                    None => ("404 Not Found", String::new(), Vec::new()),
+                },
+            };
+            let head = format!(
+                "HTTP/1.1 {status}\r\n{extra}Content-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            let _ = stream.write_all(head.as_bytes());
+            if !request.starts_with("HEAD") {
+                let _ = stream.write_all(&body);
+            }
+        }
+    });
+    url
+}
+
+#[test]
+fn without_a_checkout_the_platform_kit_is_fetched_once_and_cached() {
+    use std::sync::{Arc, Mutex};
+    let dir = scratch("kit");
+    let state = Arc::new(Mutex::new(OsServer::default()));
+    let url = os_server(state.clone());
+    let with_server = |cwd: &Path, args: &[&str], url: &str| {
+        command(cwd, None, args)
+            .env("GODSPEED_CACHE_DIR", dir.join("cache"))
+            .env("GODSPEED_TEST_OS_URL", url)
+            .output()
+            .unwrap()
+    };
+
+    // `new` with no checkout: the latest release, fetched from one commit, and said.
+    let o = with_server(&dir, &["new", "service", "hello", "--publisher", "alice"], &url);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    assert!(stdout(&o).contains("(GodspeedOS v0.28.0)"), "{}", stdout(&o));
+    assert!(
+        stderr(&o).contains("Fetching the GodspeedOS 0.28.0 platform kit"),
+        "{}",
+        stderr(&o)
+    );
+    let asked = std::mem::take(&mut state.lock().unwrap().asked);
+    assert_eq!(asked[..2], ["/releases/latest", "/commits/v0.28.0"]);
+    assert!(asked[2..].iter().all(|p| p.starts_with("/raw/c0ffee")), "{asked:?}");
+    let kit = dir.join("cache/platform/0.28.0");
+    assert!(kit.join("kit.toml").is_file() && kit.join("services/user.ld").is_file());
+
+    // In the project, offline: the release the project records, from the cache, with no request at all.
+    let p = dir.join("hello");
+    let o = with_server(&p, &["check"], NO_OS_SERVER);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    let o = with_server(&p, &["doctor", "--json"], NO_OS_SERVER);
+    assert!(stdout(&o).contains("platform kit from c0ffee00c0ff"), "{}", stdout(&o));
+
+    // A damaged cache is discarded and fetched again, never used.
+    std::fs::write(kit.join("services/user.ld"), "tampered").unwrap();
+    let o = with_server(&p, &["check"], NO_OS_SERVER);
+    assert_eq!(code(&o), 13, "{}", stderr(&o));
+    assert!(!kit.exists(), "the damaged kit is removed");
+    let o = with_server(&p, &["check"], &url);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    assert_eq!(
+        std::fs::read(kit.join("services/user.ld")).unwrap(),
+        std::fs::read(fixture_os().join("services/user.ld")).unwrap()
+    );
+
+    // A release that does not exist is refused by name.
+    let o = with_server(&dir, &["new", "service", "other", "--os-release", "9.9.9"], &url);
+    assert_eq!(code(&o), 28, "{}", stderr(&o));
+    assert!(stderr(&o).contains("GodspeedOS v9.9.9 has no"), "{}", stderr(&o));
+    assert!(!dir.join("other").exists());
 }

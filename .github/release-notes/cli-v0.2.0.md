@@ -1,10 +1,11 @@
-# 🚀 godspeed 0.2.0 - it updates itself, and knows the registry
+# 🚀 godspeed 0.2.0 - install it, and that's the setup
 
-The developer CLI for [GodspeedOS](https://github.com/godspeedhq/godspeed-os). This release makes the everyday
-parts shorter: the CLI updates itself, finds the official registry on its own, and checks a publish before
-anything leaves your machine.
+The developer CLI for [GodspeedOS](https://github.com/godspeedhq/godspeed-os). This release removes the setup:
+no clone of the OS, no environment variable, no registry address. The CLI also updates itself, and checks a
+publish before anything leaves your machine.
 
 ```sh
+godspeed new service hello         # 📦 no GodspeedOS clone needed any more
 godspeed self update               # ⬆️ from now on, this is how you update
 godspeed fetch godspeed/hello      # 🛡️ no flags: the official registry and its root of trust are built in
 godspeed publish --dry-run         # 🧪 everything but the upload
@@ -17,6 +18,11 @@ godspeed publish --dry-run         # 🧪 everything but the upload
 
 ## ✨ What's new
 
+- 📦 **No OS checkout needed.** The CLI fetches the few small files that describe a GodspeedOS release - its
+  pinned compiler, targets, compiler flags, linker script and contract schema - the first time it needs that
+  release, from one commit of the release tag, and caches them with their checksums (a damaged cache is
+  fetched again, never used). `godspeed new` uses the latest release, or `--os-release 0.28.0`; a project keeps
+  the release it was made with. `--os <path>` still builds against a checkout, for work on the OS itself.
 - ⬆️ **`godspeed self update`**, as with rustup: it downloads the latest release's build for your machine,
   checks it against the release's `SHA256SUMS`, runs it, and only then swaps it in. A mismatch, or a binary that
   does not run, changes nothing. The update notice and `doctor` now point here.

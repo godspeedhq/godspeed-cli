@@ -6,7 +6,7 @@
 
 use super::installed_targets;
 use crate::diag::{Diagnostic, Kind, Stage};
-use crate::platform::Platform;
+use crate::platform::{Platform, Want};
 use crate::target::{self, Arch};
 use std::path::{Path, PathBuf};
 
@@ -42,13 +42,18 @@ pub fn run(os_flag: Option<&Path>, json: bool) -> Result<(), Diagnostic> {
         fix: None,
     });
 
-    let platform = match Platform::locate(os_flag) {
+    // In a project, the release it is built against; elsewhere, the latest.
+    let project = std::env::current_dir()
+        .ok()
+        .and_then(|d| crate::project::Project::find(&d).ok());
+    let want = project.as_ref().map_or(Want::Latest, Want::Project);
+    let platform = match Platform::locate(os_flag, want) {
         Ok(p) => {
             lines.push(Line {
-                what: "GodspeedOS checkout".into(),
+                what: "GodspeedOS".into(),
                 ok: true,
                 optional: false,
-                detail: format!("{} ({})", p.root.display(), p.version),
+                detail: p.describe(),
                 fix: None,
             });
             Some(p)
@@ -56,7 +61,7 @@ pub fn run(os_flag: Option<&Path>, json: bool) -> Result<(), Diagnostic> {
         Err(d) => {
             required_failed = true;
             lines.push(Line {
-                what: "GodspeedOS checkout".into(),
+                what: "GodspeedOS".into(),
                 ok: false,
                 optional: false,
                 detail: d.reason.clone(),

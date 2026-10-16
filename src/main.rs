@@ -9,6 +9,7 @@
 
 mod cmd;
 mod diag;
+mod kit;
 mod platform;
 mod project;
 mod registry;
@@ -18,7 +19,7 @@ mod update;
 
 use clap::{Parser, Subcommand};
 use diag::Diagnostic;
-use platform::Platform;
+use platform::{Platform, Want};
 use project::Project;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -30,7 +31,7 @@ use std::process::ExitCode;
     about = "Create, build, package and publish GodspeedOS software, and verify anyone's"
 )]
 struct Cli {
-    /// The GodspeedOS checkout to build against. Defaults to the GODSPEED_OS environment variable.
+    /// A GodspeedOS checkout to build against, instead of the cached platform kit. Defaults to GODSPEED_OS.
     #[arg(long, global = true, value_name = "PATH")]
     os: Option<PathBuf>,
 
@@ -56,6 +57,9 @@ enum Command {
         /// The namespace a package of it is published under (a service's `publisher` in godspeed.toml)
         #[arg(long, value_name = "NAME")]
         publisher: Option<String>,
+        /// The GodspeedOS release to build against (default: the latest)
+        #[arg(long, value_name = "VERSION")]
+        os_release: Option<String>,
     },
     /// Validate the project, its contract and its toolchain, without building
     Check,
@@ -271,8 +275,10 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
             name,
             dir,
             publisher,
+            os_release,
         } => {
-            let platform = Platform::locate(os)?;
+            let want = os_release.as_deref().map_or(Want::Latest, Want::Release);
+            let platform = Platform::locate(os, want)?;
             let root = cmd::new::run(&platform, &kind, &name, dir.as_deref(), publisher.as_deref())?;
             println!(
                 "Created {kind} {name} in {} (GodspeedOS {})",
@@ -286,8 +292,8 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
             Ok(())
         }
         Command::Check => {
-            let platform = Platform::locate(os)?;
             let project = current_project()?;
+            let platform = Platform::locate(os, Want::Project(&project))?;
             cmd::check::run(&platform, &project)?;
             println!(
                 "{} {} is valid against GodspeedOS {}.",
@@ -298,8 +304,8 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
             Ok(())
         }
         Command::Build { arch, all } => {
-            let platform = Platform::locate(os)?;
             let project = current_project()?;
+            let platform = Platform::locate(os, Want::Project(&project))?;
             let arches = cmd::build::select(&platform, arch.as_deref(), all)?;
             let built = cmd::build::run(&platform, &project, &arches)?;
             for b in &built {
@@ -311,8 +317,8 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
             Ok(())
         }
         Command::Test => {
-            let platform = Platform::locate(os)?;
             let project = current_project()?;
+            let platform = Platform::locate(os, Want::Project(&project))?;
             cmd::test::run(&platform, &project)?;
             println!("All tests passed.");
             Ok(())
@@ -329,8 +335,8 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
             .into()),
         },
         Command::Package { arch, out, json } => {
-            let platform = Platform::locate(os)?;
             let project = current_project()?;
+            let platform = Platform::locate(os, Want::Project(&project))?;
             let arches = cmd::build::select(&platform, arch.as_deref(), arch.is_none())?;
             let dir = cmd::package::run(&platform, &project, &arches, out.as_deref())?;
             let verified = cmd::verify::run(&dir)?;
@@ -365,8 +371,8 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
             Ok(())
         }
         Command::Publish { dry_run } => {
-            let platform = Platform::locate(os)?;
             let project = current_project()?;
+            let platform = Platform::locate(os, Want::Project(&project))?;
             cmd::publish::run(&platform, &project, reg, dry_run)
         }
         Command::Login { with_token } => cmd::account::login(reg, with_token),

@@ -97,15 +97,17 @@ Next:
       most once a day, when there is a newer release. Or build it yourself: <code>cargo install --git https://github.com/godspeedhq/godspeed-cli --tag cli-v0.2.0 --locked godspeed-cli</code>.</p>
     </li>
     <li>
-      <h3>Point it at a GodspeedOS release</h3>
-      <p>The CLI builds against an OS checkout - its standard library release, its pinned compiler and its
-      contract schema. It reads that checkout and never writes to it.</p>
-<pre><span class="p">$ </span>git clone --branch v0.28.0 https://github.com/godspeedhq/godspeed-os
-<span class="p">$ </span>export GODSPEED_OS=$PWD/godspeed-os      <span class="c"># Windows: $env:GODSPEED_OS = "$PWD\godspeed-os"</span>
-<span class="p">$ </span>godspeed doctor</pre>
+      <h3>Check your setup</h3>
+      <p>No clone of the OS is needed. The CLI builds against a GodspeedOS release, and fetches the few small
+      files that describe it - its pinned compiler, targets, linker script and contract schema - the first
+      time, then keeps them.</p>
+<pre><span class="p">$ </span>godspeed doctor
+<span class="o">Fetching the GodspeedOS 0.28.0 platform kit (once for each release)...
+GodspeedOS                 ok       0.28.0 (platform kit from 1ebb1bb95c5c, cached in ~/.cache/godspeed/platform/0.28.0)
+Rust toolchain             ok       nightly-2026-05-16</span></pre>
       <p><code>doctor</code> checks the toolchain, all four targets and QEMU, and prints the command that
-      fixes anything missing. (On Windows, run <code>git config --global core.longpaths true</code> first:
-      the OS repository has some long file names.)</p>
+      fixes anything missing. Working on GodspeedOS itself? <code>--os &lt;path&gt;</code> builds against your
+      checkout instead.</p>
     </li>
     <li>
       <h3>Create and build</h3>

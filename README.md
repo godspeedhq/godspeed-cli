@@ -67,14 +67,21 @@ A checksum proves a download is the file the release lists; releases are not sig
 
 ## Setup
 
-    git clone https://github.com/godspeedhq/godspeed-os
-    export GODSPEED_OS=/path/to/godspeed-os      # or pass --os <path> to every command
     godspeed doctor
 
-The CLI builds against the OS checkout you name: its stdlib release, its pinned Rust toolchain, its
-target list and its contract schema. It reads that checkout and never writes to it. `godspeed doctor`
-says what is missing and the command that fixes it. (Needing a checkout at all is temporary:
-[docs/no-checkout.md](docs/no-checkout.md).)
+That is all: no clone of the OS. The CLI builds against a GodspeedOS release - its stdlib, its pinned Rust
+toolchain, its target list, its compiler flags, its service linker script and its contract schema - and
+fetches the few small files that say those things the first time it needs a release, then keeps them
+(the *platform kit*, in `~/.cache/godspeed/platform/<release>/`; `%LOCALAPPDATA%` on Windows). Each kit
+comes from one commit of the release's tag and records every file's SHA-256; a damaged one is fetched
+again, never used. After that, the network is not needed.
+
+Which release: `godspeed new` uses the latest (or `--os-release 0.28.0`), and a project keeps using the
+release it was created with - the stdlib tag in its `Cargo.toml` - until you change that tag.
+`godspeed doctor` says what is missing and the command that fixes it.
+
+Working on GodspeedOS itself? Point the CLI at your checkout instead, with `--os <path>` or
+`GODSPEED_OS`; it is read, never written. (Why kits, and what comes next: [docs/no-checkout.md](docs/no-checkout.md).)
 
 ## Releasing
 

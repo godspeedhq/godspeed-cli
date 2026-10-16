@@ -1,4 +1,6 @@
-//! The GodspeedOS platform the CLI builds against: a checkout of the OS repository, named explicitly.
+//! The GodspeedOS platform the CLI builds against: a checkout of the OS repository named with `--os` or
+//! `GODSPEED_OS`, or otherwise a platform kit for one OS release, fetched and cached (`kit.rs`). A kit holds
+//! exactly the files below, at the same paths, so both are read by the same code.
 //!
 //! EVERYTHING the CLI reads from the OS is read here, and nowhere else. Each item below is a file the OS
 //! keeps for its own build, not yet a published developer contract, so this module is the stopgap seam:
@@ -17,6 +19,9 @@
 //! | the stdlib crate exists, and is named `godspeed` | `stdlib/rust/Cargo.toml` |
 
 use crate::diag::{Diagnostic, Kind, Stage};
+use crate::kit;
+use crate::project::Project;
+use godspeed_package::Version;
 use std::path::{Path, PathBuf};
 
 /// The environment variable naming the OS checkout, when `--os` is not given.
@@ -25,9 +30,29 @@ pub const OS_ENV: &str = "GODSPEED_OS";
 /// The public repository the generated project's stdlib dependency points at.
 pub const OS_GIT_URL: &str = "https://github.com/godspeedhq/godspeed-os";
 
+/// Where the platform's files came from.
+#[derive(Debug, Clone)]
+pub enum Source {
+    /// A checkout named with `--os` or `GODSPEED_OS`.
+    Checkout,
+    /// A cached platform kit, fetched from this commit (or tag) of the OS repository.
+    Kit { reference: String },
+}
+
+/// Which OS release a command needs, when no checkout is named.
+pub enum Want<'a> {
+    /// This release (`godspeed new --os-release`).
+    Release(&'a str),
+    /// The release the project is built against.
+    Project(&'a Project),
+    /// The latest published release, or failing that, the newest one cached.
+    Latest,
+}
+
 #[derive(Debug, Clone)]
 pub struct Platform {
     pub root: PathBuf,
+    pub source: Source,
     pub version: String,
     pub toolchain: String,
     pub targets: Vec<String>,
@@ -55,30 +80,60 @@ fn read_toml(root: &Path, rel: &str) -> Result<toml::Table, Diagnostic> {
 }
 
 impl Platform {
-    /// Locate the platform: `--os` wins, then the environment. There is no guessing - a CLI that
-    /// silently found "some" checkout would build against a version nobody chose.
-    pub fn locate(flag: Option<&Path>) -> Result<Platform, Diagnostic> {
-        let root = match flag {
-            Some(p) => p.to_path_buf(),
-            None => match std::env::var_os(OS_ENV) {
-                Some(v) if !v.is_empty() => PathBuf::from(v),
-                _ => {
-                    return Err(Diagnostic::new(
-                        Kind::Environment,
-                        Stage::Setup,
-                        "find GodspeedOS",
-                        "No GodspeedOS checkout was named. The CLI builds against the OS's own stdlib, \
-                         toolchain pin and contract schema, so it needs to know which OS version to use.",
-                    )
-                    .expected(format!("`--os <path>` or the {OS_ENV} environment variable"))
-                    .next(format!(
-                        "Clone {OS_GIT_URL}, then set {OS_ENV} to the clone's path.\n\
-                                       Run `godspeed doctor` to confirm the setup."
-                    )));
+    /// Locate the platform: `--os` wins, then `GODSPEED_OS`, then the platform kit for the release `want`
+    /// names. Never "some" release: a project is built against the release it records, and a new one
+    /// against the release asked for, or the latest - and the CLI says which.
+    pub fn locate(flag: Option<&Path>, want: Want) -> Result<Platform, Diagnostic> {
+        let named = flag
+            .map(Path::to_path_buf)
+            .or_else(|| std::env::var_os(OS_ENV).filter(|v| !v.is_empty()).map(PathBuf::from));
+        if let Some(root) = named {
+            return Self::open(&root);
+        }
+        let version = match want {
+            Want::Release(v) => parse_release(v)?,
+            Want::Project(p) => match p
+                .stdlib_dependency()
+                .and_then(|d| d.get("tag"))
+                .and_then(|t| t.as_str())
+            {
+                Some(tag) => parse_release(tag)?,
+                // A library records no OS release, only its toolchain: the newest kit with that toolchain.
+                None => {
+                    let pin = p.toolchain();
+                    let matching = kit::all_cached().into_iter().find(|k| {
+                        Self::open(&k.dir).is_ok_and(|plat| pin.is_none() || pin.as_deref() == Some(&plat.toolchain))
+                    });
+                    match matching {
+                        Some(k) => return Self::from_kit(k),
+                        None => latest()?,
+                    }
                 }
             },
+            Want::Latest => latest()?,
         };
-        Self::open(&root)
+        Self::from_kit(kit::ensure(&version)?)
+    }
+
+    fn from_kit(kit: kit::Kit) -> Result<Platform, Diagnostic> {
+        let mut platform = Self::open(&kit.dir)?;
+        if platform.version != kit.version.to_string() {
+            let _ = std::fs::remove_dir_all(&kit.dir);
+            return Err(Diagnostic::new(
+                Kind::Environment,
+                Stage::Setup,
+                format!("use GodspeedOS {}", kit.version),
+                format!(
+                    "The files fetched for GodspeedOS {} say they are version {}. The cached copy was removed.",
+                    kit.version, platform.version
+                ),
+            )
+            .next("Run the command again; if it persists, name an OS checkout with `--os <path>`."));
+        }
+        platform.source = Source::Kit {
+            reference: kit.reference,
+        };
+        Ok(platform)
     }
 
     pub fn open(root: &Path) -> Result<Platform, Diagnostic> {
@@ -146,6 +201,7 @@ impl Platform {
 
         Ok(Platform {
             root: root.to_path_buf(),
+            source: Source::Checkout,
             version,
             toolchain,
             targets,
@@ -153,6 +209,19 @@ impl Platform {
             schema,
             config,
         })
+    }
+
+    /// Where it came from, for a person: the checkout's path, or the kit's release and commit.
+    pub fn describe(&self) -> String {
+        match &self.source {
+            Source::Checkout => format!("{} (checkout at {})", self.version, self.root.display()),
+            Source::Kit { reference } => format!(
+                "{} (platform kit from {}, cached in {})",
+                self.version,
+                &reference[..reference.len().min(12)],
+                self.root.display()
+            ),
+        }
     }
 
     /// The release tag for this OS version, which a generated project's stdlib dependency names.
@@ -179,5 +248,45 @@ impl Platform {
     /// The pattern a service name must match, read from the schema so the CLI never keeps a second copy.
     pub fn name_pattern(&self) -> Option<&str> {
         self.schema.get("properties")?.get("name")?.get("pattern")?.as_str()
+    }
+}
+
+/// `0.28.0` or `v0.28.0`.
+fn parse_release(text: &str) -> Result<Version, Diagnostic> {
+    text.trim_start_matches('v').parse().map_err(|_| {
+        Diagnostic::new(
+            Kind::InvalidProject,
+            Stage::Setup,
+            format!("use GodspeedOS \"{text}\""),
+            "That is not a GodspeedOS release version.",
+        )
+        .expected("a release such as 0.28.0 (the stdlib tag in Cargo.toml is v<release>)")
+        .next(format!(
+            "See the releases at {OS_GIT_URL}/releases, or name an OS checkout with `--os <path>`."
+        ))
+    })
+}
+
+/// The latest release; offline, the newest cached kit's, said out loud.
+fn latest() -> Result<Version, Diagnostic> {
+    match kit::latest() {
+        Ok(v) => Ok(v),
+        Err(why) => match kit::all_cached().into_iter().next() {
+            Some(k) => {
+                eprintln!("{why}; using GodspeedOS {}, the newest release cached here.", k.version);
+                Ok(k.version)
+            }
+            None => Err(Diagnostic::new(
+                Kind::MissingDependency,
+                Stage::Setup,
+                "find GodspeedOS",
+                format!("{why}, and no GodspeedOS release is cached on this machine yet."),
+            )
+            .expected("the network, once, to fetch the platform kit for a GodspeedOS release")
+            .next(format!(
+                "Connect and run the command again. Without a network, name a GodspeedOS checkout instead: \
+                 clone {OS_GIT_URL} and pass `--os <path>` or set {OS_ENV}."
+            ))),
+        },
     }
 }

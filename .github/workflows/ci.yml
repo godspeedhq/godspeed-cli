@@ -151,3 +151,12 @@ jobs:
             if grep -q '^kind *= *"library"' "$dir/godspeed.toml"; then (cd "$dir" && "$godspeed" test); fi
             echo "::endgroup::"
           done
+
+      # The path a newcomer takes: no checkout at all. The platform kit for this release is fetched from
+      # GitHub, and a new service is checked and built for every architecture from it.
+      - name: Without a checkout
+        run: |
+          godspeed="$PWD/target/debug/godspeed"
+          cd "$RUNNER_TEMP"
+          "$godspeed" new service probe --os-release "${{ matrix.os_ref }}"
+          cd probe && "$godspeed" check && "$godspeed" build --all
