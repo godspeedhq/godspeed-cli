@@ -18,12 +18,7 @@ waits on the OS ([below](#what-works-and-what-cannot-yet)). Godspeed programs ar
 
 ## Install
 
-**No release has been cut yet**, so the installers below have nothing to fetch until the first
-`cli-v*` release; until then, build it with Rust:
-
-    cargo install --git https://github.com/godspeedhq/godspeed-cli --branch feat/cli-foundation --locked godspeed-cli
-
-Once released - Linux or macOS:
+Linux or macOS:
 
     curl --proto '=https' --tlsv1.2 -sSf https://github.com/godspeedhq/godspeed-cli/releases/latest/download/install.sh | sh
 
@@ -53,7 +48,7 @@ doctor` asks on demand.
 
 Or build it yourself with Rust:
 
-    cargo install --git https://github.com/godspeedhq/godspeed-cli --locked godspeed-cli
+    cargo install --git https://github.com/godspeedhq/godspeed-cli --tag cli-v0.1.0 --locked godspeed-cli
 
 A checksum proves a download is the file the release lists; releases are not signed yet.
 

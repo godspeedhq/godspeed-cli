@@ -86,12 +86,15 @@ Next:
   <ol class="steps">
     <li>
       <h3>Install Rust and the CLI</h3>
-      <p>You need <a href="https://rustup.rs">Rust</a> and nothing else. No release of the CLI has been cut
-      yet, so build it with Cargo:</p>
-<pre><span class="p">$ </span>cargo install --git https://github.com/godspeedhq/godspeed-cli --branch feat/cli-foundation --locked godspeed-cli</pre>
-      <p class="small muted">Once the first release is out, a one-line installer will fetch a prebuilt
-      binary for Linux, macOS or Windows (x86_64 or Arm64) and check it against the release's checksums.
-      Running it again updates; the CLI tells you, at most once a day, when there is a newer release.</p>
+      <p>You need <a href="https://rustup.rs">Rust</a> - to build what you write - and this one binary:</p>
+<pre><span class="c"># Linux or macOS</span>
+<span class="p">$ </span>curl --proto '=https' --tlsv1.2 -sSf https://github.com/godspeedhq/godspeed-cli/releases/latest/download/install.sh | sh
+<span class="c"># Windows (PowerShell)</span>
+<span class="p">&gt; </span>irm https://github.com/godspeedhq/godspeed-cli/releases/latest/download/install.ps1 | iex</pre>
+      <p>Each installs a prebuilt binary for Linux, macOS or Windows (x86_64 or Arm64) to
+      <code>~/.godspeed/bin</code>, after checking it against the release's checksums - a mismatch installs
+      nothing. Running it again updates, and the CLI tells you, at most once a day, when there is a newer
+      release. Or build it yourself: <code>cargo install --git https://github.com/godspeedhq/godspeed-cli --tag cli-v0.1.0 --locked godspeed-cli</code>.</p>
     </li>
     <li>
       <h3>Point it at a GodspeedOS release</h3>
