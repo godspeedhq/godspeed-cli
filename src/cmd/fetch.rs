@@ -251,7 +251,7 @@ pub fn run(spec: &str, registry_flag: Option<&str>, out: Option<&Path>, pin: Opt
     let index_path = format!("index/{}/{}.toml", name.publisher(), name.name());
     let Some(index_text) = text(&client, &doing, &index_path, METADATA_LIMIT)? else {
         return Err(Diagnostic::new(
-            Kind::InvalidProject,
+            Kind::NotFound,
             Stage::Verification,
             doing.clone(),
             format!("{name} has never been published here."),
@@ -281,7 +281,7 @@ pub fn run(spec: &str, registry_flag: Option<&str>, out: Option<&Path>, pin: Opt
     let release = match wanted {
         Some(v) => index.release(v).copied().ok_or_else(|| {
             Diagnostic::new(
-                Kind::InvalidProject,
+                Kind::NotFound,
                 Stage::Verification,
                 doing.clone(),
                 format!("{name} has no version {v}."),

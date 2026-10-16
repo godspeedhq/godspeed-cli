@@ -64,6 +64,8 @@ pub enum Kind {
     /// The registry's signed trust metadata does not vouch for this: an unknown, retired or revoked key, or
     /// metadata that is unsigned, expired, rolled back or inconsistent.
     Untrusted,
+    /// The registry has no such package, or no such version of it.
+    NotFound,
     /// The registry does not accept these credentials: none, unknown, revoked or expired.
     AuthenticationFailure,
     /// The registry could not be reached, or failed, before anything was decided.
@@ -105,6 +107,7 @@ impl Kind {
             Kind::OutcomeUnknown => 25,
             Kind::SignatureFailure => 26,
             Kind::Untrusted => 27,
+            Kind::NotFound => 28,
             Kind::Io => 30,
         }
     }

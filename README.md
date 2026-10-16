@@ -155,6 +155,7 @@ Scripts and CI can tell failures apart without reading the text:
 | 25 | outcome unknown: finalising got no answer and the index does not show it yet - run `publish` again |
 | 26 | signature failure: a signature is malformed, or the named key did not sign this manifest |
 | 27 | untrusted: the registry's signed metadata does not vouch for it - an unknown, retired or revoked key, or metadata that is unsigned, expired, rolled back or inconsistent |
+| 28 | not found: the registry has no such package, or no such version of it |
 | 30 | a local file could not be read or written |
 
 ## Development
