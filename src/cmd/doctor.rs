@@ -23,6 +23,25 @@ pub fn run(os_flag: Option<&Path>) -> Result<(), Diagnostic> {
     let mut lines = Vec::new();
     let mut required_failed = false;
 
+    // This CLI itself: asked directly, since `doctor` is where someone looks. Never fails the check.
+    let current = crate::update::current();
+    let latest = if std::env::var_os(crate::update::OFF_ENV).is_some_and(|v| !v.is_empty() && v != "0") {
+        Err("not checked: ".to_string() + crate::update::OFF_ENV + " is set")
+    } else {
+        crate::update::latest_release().map_err(|()| "could not ask GitHub for the latest release".to_string())
+    };
+    lines.push(Line {
+        what: "godspeed CLI".into(),
+        ok: true,
+        optional: true,
+        detail: match latest {
+            Ok(Some(l)) if l > current => format!("{current}; {l} is available - run the installer again to update"),
+            Ok(_) => format!("{current}; no newer release is published"),
+            Err(why) => format!("{current} ({why})"),
+        },
+        fix: None,
+    });
+
     let platform = match Platform::locate(os_flag) {
         Ok(p) => {
             lines.push(Line {

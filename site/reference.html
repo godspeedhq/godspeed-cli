@@ -46,7 +46,7 @@
     <tr><td><code>build [--arch &lt;isa&gt; | --all]</code></td><td>Build for one architecture (default <code>x86_64</code>; also <code>aarch64</code>, <code>armv7</code>, <code>riscv64</code>) or every one the OS supports. A service gives one ELF per architecture; a library, an rlib.</td></tr>
     <tr><td><code>test</code></td><td>Run a library's tests on your workstation. Refused for a service, which cannot run off a Godspeed machine.</td></tr>
     <tr><td><code>run</code></td><td>Refused, with the reason: GodspeedOS has no public way yet to run a service built outside its tree.</td></tr>
-    <tr><td><code>doctor</code></td><td>Check your environment: the OS checkout, the pinned toolchain, every target, QEMU. Says the command that fixes each problem.</td></tr>
+    <tr><td><code>doctor</code></td><td>Check your environment: this CLI's version against the latest release, the OS checkout, the pinned toolchain, every target, QEMU. Says the command that fixes each problem.</td></tr>
   </table></div>
 
   <h3>Packaging and verifying</h3>
@@ -90,6 +90,7 @@
     <tr><td><code>GODSPEED_TOKEN</code></td><td>A publisher token, in place of the stored one (for CI).</td></tr>
     <tr><td><code>GODSPEED_SIGNING_KEY</code></td><td>Your signing key's secret, in place of <code>signing-key.toml</code> (for CI).</td></tr>
     <tr><td><code>GODSPEED_CONFIG_DIR</code></td><td>Where the CLI keeps its files, in place of the default below.</td></tr>
+    <tr><td><code>GODSPEED_NO_UPDATE_CHECK</code></td><td>Set to <code>1</code> to stop the once-a-day check for a newer release. It is also skipped when <code>CI</code> is set or stderr is not a terminal.</td></tr>
   </table></div>
 
   <h2 id="files">Files</h2>
@@ -99,6 +100,7 @@
     <tr><th>File</th><th>Holds</th></tr>
     <tr><td><code>signing-key.toml</code></td><td>Your signing key. Back it up; never share it.</td></tr>
     <tr><td><code>credentials.toml</code></td><td>Your token for each registry, and which registry is the default.</td></tr>
+    <tr><td><code>update-check.toml</code></td><td>When this machine last asked for the latest release, and the answer. Delete it and the next command asks again.</td></tr>
     <tr><td><code>trust/</code></td><td>For each registry, the root of trust this machine accepted and the newest metadata versions it has seen, so it can never be sent back to older ones.</td></tr>
   </table></div>
 
