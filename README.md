@@ -43,6 +43,10 @@ Debian - would be cheap to add: two more static cross-builds. They are left out 
 runners for either, so they could only be tested under emulation. Packages, the programs the CLI builds,
 target all four Godspeed architectures regardless.)
 
+**Updating:** run the same installer again. It fetches the latest release, checks it the same way, and
+swaps it in for the old binary only once it is verified. (`GODSPEED_VERSION` pins a version, including an
+older one.) The CLI does not update itself.
+
 Or build it yourself with Rust:
 
     cargo install --git https://github.com/godspeedhq/godspeed-cli --locked godspeed-cli
@@ -66,6 +70,22 @@ Push a tag `cli-v<version>`, equal to the version in `Cargo.toml`. `.github/work
 all six binaries, runs each where it can, tests both installers against exactly those binaries on Linux,
 macOS and Windows, and then creates a **draft** release. Nothing is public until the draft is published;
 the installers' `releases/latest` never resolves to a draft.
+
+## What you can create
+
+    godspeed new <kind> <name>
+
+| kind | what it is | today |
+|---|---|---|
+| `service` | a managed program with a lifecycle that requests its authority in a contract - every runnable Godspeed program is one | **works**: `godspeed new service clock` |
+| `library` | reusable `no_std` Rust for other Godspeed projects; not run on its own, and its tests run on your workstation | **works**: `godspeed new library parser` |
+| `utility` | a program that does one job and ends | refused: GodspeedOS has no terminating task yet (no `fn main()`, no exit) |
+| `app` | a user-facing program | refused: GodspeedOS has no public application interfaces yet |
+| `driver` | a userspace driver for a device | refused: a driver built outside the OS tree has no way yet to be granted a device |
+
+A kind is offered only once GodspeedOS can run it. Ask for one it cannot and the CLI says what is missing,
+where the OS tracks it, and what to make instead (exit 20) - never a template that pretends. The
+[examples](examples/) show what a service and a library can do today.
 
 ## Use
 
