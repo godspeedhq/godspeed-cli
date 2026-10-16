@@ -1,0 +1,12 @@
+# The service contract: what this service REQUESTS. It grants nothing. What a service is actually
+# given is decided by the operating system, not by this file.
+# Format: contracts/schema/service.schema.json in GodspeedOS. `godspeed check` validates against it.
+name    = "{{name}}"
+version = "0.1.0"
+
+[resources.memory]
+request = "32MiB"
+limit   = "32MiB"
+
+[capabilities]
+log_write = true   # write lines to the kernel log - and nothing else

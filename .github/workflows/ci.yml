@@ -1,0 +1,153 @@
+name: ci
+
+# Two jobs, with different jobs to do:
+#
+#   cli        - the CLI itself: formatting, lints, and the offline tests (against tests/fixtures/os),
+#                on Linux and on Windows, the two workstations it is developed on.
+#   templates  - every template the CLI ships, generated and built against a REAL GodspeedOS release,
+#                for every architecture that release supports, with the library template's tests run.
+#                CLAUDE.md: "Every template is built and run in CI. Templates are executable
+#                documentation: one that fails to build or run under its documented environment is a
+#                defect in the CLI." A service template cannot be RUN yet (GodspeedOS cannot boot a
+#                service built outside its tree), so for a service this job proves the build and checks
+#                each binary's machine and entry point - it does not claim more.
+
+# Frugal by design: a change to prose only (top-level *.md, docs/, site/, LICENSE) runs nothing.
+# `*.md` matches the repository root only, so a template's README - which ships inside generated
+# projects - still runs the full workflow.
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['*.md', 'docs/**', 'install/**', 'site/**', 'LICENSE']
+  pull_request:
+    paths-ignore: ['*.md', 'docs/**', 'install/**', 'site/**', 'LICENSE']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  cli:
+    name: CLI (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust (stable, with rustfmt and clippy)
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+
+      - name: Formatting
+        run: cargo fmt --all --check
+
+      - name: Lints
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+      - name: Offline tests
+        run: cargo test --workspace --all-features --locked
+
+      # CLAUDE.md: the package-contract crate "must build `no_std` and without an allocator, because the
+      # native side runs on Godspeed under its no-heap rule". A successful build alone does not prove the
+      # second half - `alloc` ships for these targets - so the dependency tree is also checked for any
+      # `alloc` or `std` feature. Once, on Linux: the answer does not depend on the host.
+      - name: Package contract is no_std and allocator-free, on every Godspeed target
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          targets="x86_64-unknown-none aarch64-unknown-none armv7a-none-eabi riscv64imac-unknown-none-elf"
+          rustup target add $targets
+          # curve25519-dalek's SIMD backend cannot build for a target with no SSE; its portable one must be
+          # chosen with this cfg (there is no Cargo feature for it). Every consumer building for
+          # x86_64-unknown-none needs the same flag - crates/godspeed-package/src/lib.rs says so.
+          export CARGO_TARGET_X86_64_UNKNOWN_NONE_RUSTFLAGS='--cfg curve25519_dalek_backend="serial"'
+          for t in $targets; do
+            cargo build -p godspeed-package --no-default-features --locked --target "$t"
+          done
+          # What is compiled INTO the crate; build scripts run on the host and may use std.
+          if cargo tree -p godspeed-package --no-default-features -e features,no-build,no-dev --target x86_64-unknown-none \
+               | grep -E 'feature "(alloc|std)"'; then
+            echo "::error::the package contract's no_std build pulls in alloc or std (above)"
+            exit 1
+          fi
+
+  templates:
+    name: Templates against GodspeedOS ${{ matrix.os_ref }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The GodspeedOS releases the templates are proven against. Add a release here when the CLI
+        # starts supporting it; a template that only works against an unreleased OS is not shippable.
+        os_ref: [v0.28.0]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check out GodspeedOS ${{ matrix.os_ref }}
+        uses: actions/checkout@v5
+        with:
+          repository: godspeedhq/godspeed-os
+          ref: ${{ matrix.os_ref }}
+          path: godspeed-os
+
+      - name: Install Rust (stable, for the CLI itself)
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      # The OS pins its compiler and the targets it builds for in rust-toolchain.toml. Install exactly
+      # that, read from the file, so this job can never drift from the release it is testing against.
+      # (`rustup show` in the checkout would also do it, but would install the OS's whole component
+      # list - miri among them - which building a template does not need.)
+      - name: Install the toolchain GodspeedOS ${{ matrix.os_ref }} pins
+        working-directory: godspeed-os
+        run: |
+          read -r channel targets < <(python3 - <<'EOF'
+          import tomllib
+          t = tomllib.load(open("rust-toolchain.toml", "rb"))["toolchain"]
+          print(t["channel"], ",".join(t.get("targets", [])))
+          EOF
+          )
+          echo "toolchain $channel, targets $targets"
+          rustup toolchain install "$channel" --profile minimal --target "$targets"
+
+      - name: Build the CLI
+        run: cargo build --locked
+
+      # Dogfooding: the CLI's own environment check must pass before anything is built. If it fails
+      # here, it fails for a developer too.
+      - name: godspeed doctor
+        env:
+          GODSPEED_OS: ${{ github.workspace }}/godspeed-os
+        run: target/debug/godspeed doctor
+
+      - name: Generate, build and test every template
+        env:
+          GODSPEED_OS: ${{ github.workspace }}/godspeed-os
+        run: cargo test --locked --test cli -- --ignored
+
+      # The examples the guide (site/) explains: each checked and built for every architecture, and a
+      # library's tests run, exactly as a developer would - so the guide never shows code that does not
+      # compile against a release it claims to support.
+      - name: Check and build every example
+        env:
+          GODSPEED_OS: ${{ github.workspace }}/godspeed-os
+        run: |
+          godspeed="$PWD/target/debug/godspeed"
+          for dir in examples/*/; do
+            echo "::group::$dir"
+            (cd "$dir" && "$godspeed" check && "$godspeed" build --all)
+            if grep -q '^kind *= *"library"' "$dir/godspeed.toml"; then (cd "$dir" && "$godspeed" test); fi
+            echo "::endgroup::"
+          done

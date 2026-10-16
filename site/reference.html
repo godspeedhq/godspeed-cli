@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reference - Godspeed CLI</title>
+<meta name="description" content="Every godspeed command, option, environment variable, file and exit code.">
+<link rel="stylesheet" href="style.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="./"><span class="mark">g</span>Godspeed CLI</a>
+    <nav class="main">
+      <a href="./">Overview</a>
+      <a href="examples.html">Examples</a>
+      <a href="publishing.html">Publishing</a>
+      <a href="reference.html" aria-current="page">Reference</a>
+      <a href="https://github.com/godspeedhq/godspeed-cli">GitHub</a>
+    </nav>
+    <button class="theme-toggle" type="button">Dark</button>
+  </div>
+</header>
+
+<main class="wrap">
+  <h1>Reference</h1>
+  <p class="lede">Every command, option, environment variable, file and exit code. <code>godspeed help
+  &lt;command&gt;</code> says the same, offline.</p>
+
+  <div class="toc">
+    <a href="#commands">Commands</a><br>
+    <a href="#options">Options every command takes</a><br>
+    <a href="#env">Environment variables</a><br>
+    <a href="#files">Files</a><br>
+    <a href="#project">A project's files</a><br>
+    <a href="#exit-codes">Exit codes</a>
+  </div>
+
+  <h2 id="commands">Commands</h2>
+  <h3>Making and building</h3>
+  <div class="table-scroll"><table>
+    <tr><th>Command</th><th>What it does</th></tr>
+    <tr><td><code>new service &lt;name&gt;</code><br><code>new library &lt;name&gt;</code></td><td>Create the smallest valid project of that kind, against the OS release you build with. <code>--dir</code> puts it elsewhere. <code>utility</code>, <code>app</code> and <code>driver</code> are refused, with the reason: GodspeedOS cannot run those kinds yet.</td></tr>
+    <tr><td><code>check</code></td><td>Validate the project, its toolchain pin, its stdlib release, and its contract against the OS's schema - without building.</td></tr>
+    <tr><td><code>build [--arch &lt;isa&gt; | --all]</code></td><td>Build for one architecture (default <code>x86_64</code>; also <code>aarch64</code>, <code>armv7</code>, <code>riscv64</code>) or every one the OS supports. A service gives one ELF per architecture; a library, an rlib.</td></tr>
+    <tr><td><code>test</code></td><td>Run a library's tests on your workstation. Refused for a service, which cannot run off a Godspeed machine.</td></tr>
+    <tr><td><code>run</code></td><td>Refused, with the reason: GodspeedOS has no public way yet to run a service built outside its tree.</td></tr>
+    <tr><td><code>doctor</code></td><td>Check your environment: the OS checkout, the pinned toolchain, every target, QEMU. Says the command that fixes each problem.</td></tr>
+  </table></div>
+
+  <h3>Packaging and verifying</h3>
+  <div class="table-scroll"><table>
+    <tr><th>Command</th><th>What it does</th></tr>
+    <tr><td><code>package [--arch &lt;isa&gt;] [--out &lt;dir&gt;]</code></td><td>Build every architecture and write a package directory (default <code>target/package/&lt;publisher&gt;-&lt;name&gt;-&lt;version&gt;</code>), then verify it from disk before reporting it. Needs <code>publisher</code> in <code>godspeed.toml</code>.</td></tr>
+    <tr><td><code>verify &lt;dir&gt;</code></td><td>Check every file of a package directory against its manifest, and its signature if it has one. Needs no OS checkout and no registry.</td></tr>
+    <tr><td><code>sign &lt;dir&gt;</code></td><td>Sign a package directory with your key (writes <code>manifest.sig</code>) and verify the result. <code>publish</code> does this for you.</td></tr>
+    <tr><td><code>fetch &lt;publisher/name&gt;[@version] [--out &lt;dir&gt;] [--trust-root sha256:...]</code></td><td>Download a release (default: the highest version) and verify it through the registry's whole chain of trust before keeping it.</td></tr>
+  </table></div>
+
+  <h3>Publishing</h3>
+  <div class="table-scroll"><table>
+    <tr><th>Command</th><th>What it does</th></tr>
+    <tr><td><code>key generate</code></td><td>Make your Ed25519 signing key. Never replaces an existing one.</td></tr>
+    <tr><td><code>key show</code></td><td>Print your public key, for the registry maintainer.</td></tr>
+    <tr><td><code>login [--with-token]</code></td><td>Make a publisher token on this machine, store it, and print its fingerprint for the maintainer to approve. Again later: says whether it is approved. <code>--with-token</code> stores an existing token instead, read from the terminal or standard input, after checking it.</td></tr>
+    <tr><td><code>token new</code></td><td>Make a token for CI: printed once, stored nowhere.</td></tr>
+    <tr><td><code>whoami</code></td><td>Your account, the namespaces you may publish under, and when your token expires.</td></tr>
+    <tr><td><code>publish</code></td><td>Package, sign, reserve, upload and finalise. If finalising gets no answer, reads the registry's index and reports what it finds. Always safe to run again.</td></tr>
+    <tr><td><code>logout</code></td><td>Revoke the token at the registry and remove it from this machine.</td></tr>
+  </table></div>
+
+  <h3>Belonging to a Godspeed machine</h3>
+  <p><code>install</code>, <code>search</code>, <code>info</code>, <code>list</code>, <code>update</code> and
+  <code>uninstall</code> belong to the native package manager, a separate program that runs on a Godspeed
+  machine. This CLI recognises them and says so (exit 22), rather than doing something else under their name.</p>
+
+  <h2 id="options">Options every command takes</h2>
+  <div class="table-scroll"><table>
+    <tr><th>Option</th><th>Meaning</th></tr>
+    <tr><td><code>--os &lt;path&gt;</code></td><td>The GodspeedOS checkout to build against. Default: <code>GODSPEED_OS</code>.</td></tr>
+    <tr><td><code>--registry &lt;url&gt;</code></td><td>The registry. Default: <code>GODSPEED_REGISTRY</code>, then the last <code>login</code>.</td></tr>
+  </table></div>
+
+  <h2 id="env">Environment variables</h2>
+  <div class="table-scroll"><table>
+    <tr><th>Variable</th><th>Meaning</th></tr>
+    <tr><td><code>GODSPEED_OS</code></td><td>Path to a GodspeedOS checkout: its stdlib release, pinned toolchain, targets and contract schema. Read, never written.</td></tr>
+    <tr><td><code>GODSPEED_REGISTRY</code></td><td>The registry URL.</td></tr>
+    <tr><td><code>GODSPEED_TOKEN</code></td><td>A publisher token, in place of the stored one (for CI).</td></tr>
+    <tr><td><code>GODSPEED_SIGNING_KEY</code></td><td>Your signing key's secret, in place of <code>signing-key.toml</code> (for CI).</td></tr>
+    <tr><td><code>GODSPEED_CONFIG_DIR</code></td><td>Where the CLI keeps its files, in place of the default below.</td></tr>
+  </table></div>
+
+  <h2 id="files">Files</h2>
+  <p>In <code>~/.config/godspeed/</code> (or <code>$XDG_CONFIG_HOME/godspeed/</code>; on Windows
+  <code>%APPDATA%\godspeed\</code>), each readable by you alone:</p>
+  <div class="table-scroll"><table>
+    <tr><th>File</th><th>Holds</th></tr>
+    <tr><td><code>signing-key.toml</code></td><td>Your signing key. Back it up; never share it.</td></tr>
+    <tr><td><code>credentials.toml</code></td><td>Your token for each registry, and which registry is the default.</td></tr>
+    <tr><td><code>trust/</code></td><td>For each registry, the root of trust this machine accepted and the newest metadata versions it has seen, so it can never be sent back to older ones.</td></tr>
+  </table></div>
+
+  <h2 id="project">A project's files</h2>
+<pre>godspeed.toml           <span class="c"># what kind of project this is, where its contract is, and the publisher,</span>
+                        <span class="c"># description and license a package of it carries</span>
+Cargo.toml              <span class="c"># how Rust builds it; depends on the `godspeed` stdlib at an OS release tag</span>
+contracts/&lt;name&gt;.toml   <span class="c"># (services) the OS service contract: the authority it REQUESTS</span>
+rust-toolchain.toml     <span class="c"># the compiler that OS release is built with</span>
+src/</pre>
+  <p>And a package directory, as <code>package</code> writes it and <code>verify</code> checks it:</p>
+<pre>manifest.toml           <span class="c"># name, version, kind, publisher, and the size and SHA-256 of every file</span>
+manifest.sig            <span class="c"># the publisher's signature over the manifest</span>
+contract.toml           <span class="c"># (services) the contract, as built</span>
+x86_64.elf  aarch64.elf  armv7.elf  riscv64.elf</pre>
+  <p>The format is defined in <a href="https://github.com/godspeedhq/godspeed-cli/blob/main/docs/package-format.md">package-format.md</a>,
+  independent of any registry.</p>
+
+  <h2 id="exit-codes">Exit codes</h2>
+  <p>Scripts and CI can tell failures apart without reading the text.</p>
+  <div class="table-scroll"><table>
+    <tr><th>Code</th><th>Meaning</th></tr>
+    <tr><td>0</td><td>Success</td></tr>
+    <tr><td>2</td><td>The command line itself was wrong</td></tr>
+    <tr><td>10</td><td>Invalid project</td></tr>
+    <tr><td>11</td><td>Environment: no OS checkout, toolchain or target missing</td></tr>
+    <tr><td>12</td><td>Unavailable target or architecture</td></tr>
+    <tr><td>13</td><td>A dependency could not be fetched</td></tr>
+    <tr><td>14</td><td>Compilation failure</td></tr>
+    <tr><td>15</td><td>Test failure</td></tr>
+    <tr><td>16</td><td>Invalid package: a missing or extra file, a manifest that breaks the format</td></tr>
+    <tr><td>17</td><td>Integrity failure: a size or checksum mismatch</td></tr>
+    <tr><td>18</td><td>Authentication failure: not logged in, or the token is unknown, revoked or expired</td></tr>
+    <tr><td>19</td><td>The registry could not be reached, before anything was published</td></tr>
+    <tr><td>20</td><td>GodspeedOS does not provide this yet</td></tr>
+    <tr><td>21</td><td>This CLI does not implement this yet</td></tr>
+    <tr><td>22</td><td>This is the native package manager's command, not this CLI's</td></tr>
+    <tr><td>23</td><td>Permission denied: the namespace is not yours, or the key is not listed for it</td></tr>
+    <tr><td>24</td><td>Conflict: the version is already published, or being published</td></tr>
+    <tr><td>25</td><td>Outcome unknown: finalising got no answer and the index does not show it yet - run <code>publish</code> again</td></tr>
+    <tr><td>26</td><td>Signature failure: a signature is malformed, or the named key did not sign this manifest</td></tr>
+    <tr><td>27</td><td>Untrusted: the registry's signed metadata does not vouch for it - an unknown, retired or revoked key, or metadata that is unsigned, expired, rolled back or inconsistent</td></tr>
+    <tr><td>28</td><td>Not found: the registry has no such package, or no such version of it</td></tr>
+    <tr><td>30</td><td>A local file could not be read or written</td></tr>
+  </table></div>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    Godspeed CLI is free software under the GPL-2.0.
+    <a href="https://github.com/godspeedhq/godspeed-cli">Source</a> ·
+    <a href="https://github.com/godspeedhq/godspeed-os">GodspeedOS</a> ·
+    <a href="https://github.com/godspeedhq/godspeed-registry">Registry</a>
+  </div>
+</footer>
+</body>
+</html>

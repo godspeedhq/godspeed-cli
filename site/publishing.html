@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Publishing - Godspeed CLI</title>
+<meta name="description" content="Publish a Godspeed package: your signing key, your publisher token, publishing from CI, and verifying what anyone published.">
+<link rel="stylesheet" href="style.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="./"><span class="mark">g</span>Godspeed CLI</a>
+    <nav class="main">
+      <a href="./">Overview</a>
+      <a href="examples.html">Examples</a>
+      <a href="publishing.html" aria-current="page">Publishing</a>
+      <a href="reference.html">Reference</a>
+      <a href="https://github.com/godspeedhq/godspeed-cli">GitHub</a>
+    </nav>
+    <button class="theme-toggle" type="button">Dark</button>
+  </div>
+</header>
+
+<main class="wrap">
+  <h1>Publishing</h1>
+  <p class="lede">A package is signed on your machine, by a key only you hold, and uploaded with a token only
+  you hold. Anyone can then download it and check, offline, that you published it and nobody changed it.</p>
+
+  <div class="toc">
+    <a href="#once">Once: your key and your token</a><br>
+    <a href="#publish">Publishing a release</a><br>
+    <a href="#ci">Publishing from CI</a><br>
+    <a href="#verify">Verifying anyone's package</a><br>
+    <a href="#trust">What a verified package means</a><br>
+    <a href="#keys">Rotating or losing a key</a><br>
+    <a href="#failures">When publishing fails</a>
+  </div>
+
+  <div class="note">
+    <p><strong>The official registry is live</strong> at
+    <code>https://godspeed-registry.bankole-422.workers.dev</code>. That address is temporary - it moves to a
+    custom domain - so the CLI has no built-in default yet: pass <code>--registry</code>, set
+    <code>GODSPEED_REGISTRY</code>, or name it once with <code>godspeed login</code>. Publishers are approved
+    by hand for now, by the registry's maintainer.</p>
+  </div>
+
+  <h2 id="once">Once: your key and your token</h2>
+  <p>Publishing needs two things, and they are deliberately separate. Your <strong>signing key</strong> proves
+  which key signed a release. Your <strong>token</strong> proves to the registry who is uploading. Losing one
+  never gives away the other.</p>
+
+  <ol class="steps">
+    <li>
+      <h3>Make your signing key</h3>
+<pre><span class="p">$ </span>godspeed key generate
+<span class="o">Generated a signing key.
+  public key: ed25519:b79a6e807483491aef81606ca45acfa2b4aa943522d693213b5439a26f7d0975
+  stored in:  ~/.config/godspeed/signing-key.toml (readable by you alone)</span></pre>
+      <p>Back that file up: a lost key cannot be recovered. Send the <strong>public</strong> key - never the
+      file - to the registry maintainer. They list it, signed offline, as a key allowed to sign for your
+      namespace.</p>
+    </li>
+    <li>
+      <h3>Make your token</h3>
+<pre><span class="p">$ </span>godspeed login --registry https://godspeed-registry.bankole-422.workers.dev
+<span class="o">Made a publisher token for https://godspeed-registry.bankole-422.workers.dev, stored in
+~/.config/godspeed/credentials.toml (readable by you alone).
+Its fingerprint:
+  sha256:7555d1395fd4b16f16db195c707335aa748c4f5c84d7c2b27db0a5f87ca2a917
+Send the registry maintainer this fingerprint - never the token itself - and your account name.</span></pre>
+      <p>Like an SSH key, the token is made on your machine and never leaves it. The maintainer approves only
+      its fingerprint - its SHA-256 - which is all the registry ever stores. Running <code>login</code> again
+      is always safe: it says whether the token is still waiting, and makes a new one only if the old one can
+      never work again.</p>
+    </li>
+    <li>
+      <h3>Check it</h3>
+<pre><span class="p">$ </span>godspeed whoami
+<span class="o">alice on https://godspeed-registry.bankole-422.workers.dev
+  may publish under: alice/
+  token expires:     2027-01-14T10:34:09Z
+  token from:        stored credentials
+  fingerprint:       sha256:7555d1395fd4b16f16db195c707335aa748c4f5c84d7c2b27db0a5f87ca2a917</span></pre>
+    </li>
+  </ol>
+  <p class="small muted">On Windows the two files are in <code>%APPDATA%\godspeed\</code>.</p>
+
+  <h2 id="publish">Publishing a release</h2>
+  <p>Name your namespace in <code>godspeed.toml</code> - <code>publisher = "alice"</code> makes the package
+  <code>alice/hello</code> - and publish:</p>
+<pre><span class="p">$ </span>godspeed publish
+<span class="o">Creating package...
+Verifying package...
+Signing with ed25519:b79a6e80...
+Authenticating with https://godspeed-registry.bankole-422.workers.dev...
+Reserving alice/hello@0.1.0...
+Uploading contract.toml (439 bytes)...
+Uploading manifest.sig (243 bytes)...
+Uploading x86_64.elf (18952 bytes)...
+Uploading aarch64.elf (78760 bytes)...
+Uploading armv7.elf (16644 bytes)...
+Uploading riscv64.elf (30968 bytes)...
+Finalising publication...
+Published alice/hello@0.1.0</span></pre>
+  <ul>
+    <li><strong>Every architecture, one version.</strong> <code>publish</code> builds all four and publishes
+    them together as one release.</li>
+    <li><strong>A published version never changes.</strong> To change anything, raise the version (in
+    <code>Cargo.toml</code> and the contract) and publish again. Publishing the identical package twice is a
+    success, not an error.</li>
+    <li><strong>Nothing half-published is ever visible.</strong> Files are staged privately and checked; the
+    release appears only when the registry's index is updated, all at once. Two people publishing the same
+    version at the same moment: exactly one wins, and the other is told so.</li>
+    <li><strong>Want to look first?</strong> <code>godspeed package</code> builds exactly what
+    <code>publish</code> would send, into <code>target/package/</code>, and <code>godspeed verify</code>
+    checks it.</li>
+  </ul>
+
+  <h2 id="ci">Publishing from CI</h2>
+  <p>CI gets its own token, printed once and stored nowhere:</p>
+<pre><span class="p">$ </span>godspeed token new --registry https://godspeed-registry.bankole-422.workers.dev
+<span class="o">gsp_...
+Fingerprint: sha256:...
+The token above is shown once and saved nowhere. Put it in your CI's secrets as GODSPEED_TOKEN, and
+send the registry maintainer the fingerprint - never the token - and your account name.</span></pre>
+  <p>Send the fingerprint to the maintainer as before, then give the job two secrets and nothing else:</p>
+<span class="file">.github/workflows/publish.yml (excerpt)</span>
+<pre>env:
+  GODSPEED_REGISTRY: https://godspeed-registry.bankole-422.workers.dev
+  GODSPEED_TOKEN: ${{ secrets.GODSPEED_TOKEN }}             <span class="c"># the token from `token new`</span>
+  GODSPEED_SIGNING_KEY: ${{ secrets.GODSPEED_SIGNING_KEY }} <span class="c"># the secret line of signing-key.toml</span>
+steps:
+  - run: godspeed publish</pre>
+  <p>Every command runs without prompts, with the same checks as on your machine.</p>
+
+  <h2 id="verify">Verifying anyone's package</h2>
+  <p>Downloading needs no account. <code>fetch</code> checks a release the way a Godspeed machine will before
+  installing it, and keeps nothing it could not verify:</p>
+<pre><span class="p">$ </span>godspeed fetch godspeed/hello --registry https://godspeed-registry.bankole-422.workers.dev \
+    --trust-root sha256:d769d1a64c3105c8da0ffcc2f54aba1c3a16ce4ae707a6d206556f08824a146d
+<span class="o">Checking https://godspeed-registry.bankole-422.workers.dev's trust metadata...
+Downloading contract.toml...
+Downloading x86_64.elf...
+...
+Fetched godspeed/hello@0.1.0 into ./godspeed-hello-0.1.0
+  verified: root 1 -> timestamp 2 -> snapshot 2 -> namespaces 1 -> index -> manifest -> files
+  signed by ed25519:b79a6e80... (an active key of godspeed/)
+  requests: log_write</span></pre>
+  <p><code>--trust-root</code> pins the registry's root of trust the first time this machine talks to it; the
+  digest above is the official registry's. Without it, the CLI trusts the root it is given on first contact
+  and prints its digest for you to compare. After that, a new root is accepted only if the old one signed
+  it.</p>
+  <p>A package directory - downloaded any way you like - can also be checked with no registry at all:</p>
+<pre><span class="p">$ </span>godspeed verify ./godspeed-hello-0.1.0</pre>
+
+  <h2 id="trust">What a verified package means</h2>
+  <div class="table-scroll">
+  <table>
+    <tr><th>Checked</th><th>It means</th><th>It does not mean</th></tr>
+    <tr><td>Size and SHA-256 of every file</td><td>These are exactly the bytes the manifest names</td><td>Who made them</td></tr>
+    <tr><td>The manifest's signature</td><td>The named key signed this release</td><td>That the key is the publisher's</td></tr>
+    <tr><td>The registry's signed namespaces</td><td>That key may sign for this namespace, and was not revoked</td><td>That the software is safe</td></tr>
+    <tr><td>Timestamp and snapshot</td><td>You see the registry's current state, not an old one replayed</td><td>Anything about the code</td></tr>
+  </table>
+  </div>
+  <p>The design follows <a href="https://theupdateframework.io/">The Update Framework</a>: the keys that
+  decide who may sign for whom are kept offline, so even the registry cannot change them. Details:
+  <a href="https://github.com/godspeedhq/godspeed-cli/blob/main/docs/trust-metadata.md">trust metadata</a>.</p>
+  <div class="note">
+    <p><strong>A signature is not a safety check, and installing is not a grant.</strong> A package's
+    contract <em>requests</em> authority. What it is actually given is decided by the operating system on
+    the machine it runs on.</p>
+  </div>
+
+  <h2 id="keys">Rotating or losing a key</h2>
+  <ul>
+    <li><strong>Routine rotation:</strong> make a new key and send its public half to the maintainer, who
+    lists it and <em>retires</em> the old one. Releases the old key signed stay trusted; it signs nothing new.</li>
+    <li><strong>A key is stolen or leaked:</strong> tell the maintainer to <em>revoke</em> it. Nothing it ever
+    signed is trusted any more, however old, so republish what matters under a new version with the new key.</li>
+    <li><strong>A token leaks:</strong> <code>godspeed logout</code> revokes it at the registry. The
+    maintainer can also revoke every token of an account.</li>
+  </ul>
+
+  <h2 id="failures">When publishing fails</h2>
+  <p>Every refusal says what happened, why, and what to do next, and exits with a code a script can act on
+  (<a href="reference.html#exit-codes">all of them</a>):</p>
+<pre><span class="o">Cannot publish alice/hello@0.1.0
+Stage: upload
+Reason:
+  alice/hello@0.1.0 was already published on 2026-10-16T10:36:55Z with a different manifest.
+  Published versions never change.
+Next:
+  Increment the version (in the contract and Cargo.toml) and publish again.</span></pre>
+  <p>If the connection drops while finalising, <code>publish</code> does not guess: it reads the registry's
+  index and reports what it finds. If it still cannot tell, it says the outcome is unknown (exit 25), and
+  running <code>publish</code> again is always safe.</p>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    Godspeed CLI is free software under the GPL-2.0.
+    <a href="https://github.com/godspeedhq/godspeed-cli">Source</a> ·
+    <a href="https://github.com/godspeedhq/godspeed-os">GodspeedOS</a> ·
+    <a href="https://github.com/godspeedhq/godspeed-registry">Registry</a>
+  </div>
+</footer>
+</body>
+</html>

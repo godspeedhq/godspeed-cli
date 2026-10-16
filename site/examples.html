@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Examples - Godspeed CLI</title>
+<meta name="description" content="What you can build for GodspeedOS with the godspeed CLI today: services and libraries, each built for every architecture in CI.">
+<link rel="stylesheet" href="style.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="./"><span class="mark">g</span>Godspeed CLI</a>
+    <nav class="main">
+      <a href="./">Overview</a>
+      <a href="examples.html" aria-current="page">Examples</a>
+      <a href="publishing.html">Publishing</a>
+      <a href="reference.html">Reference</a>
+      <a href="https://github.com/godspeedhq/godspeed-cli">GitHub</a>
+    </nav>
+    <button class="theme-toggle" type="button">Dark</button>
+  </div>
+</header>
+
+<main class="wrap">
+  <h1>Examples</h1>
+  <p class="lede">Real projects, each started with <code>godspeed new</code> and written only against the
+  public standard library, <code>gs</code>. CI builds every one for x86_64, aarch64, armv7 and riscv64
+  against GodspeedOS v0.28.0, so none of this is code that does not compile.</p>
+
+  <div class="grid">
+    <a class="card" href="#hello"><h3>hello</h3><p>The template itself: the smallest valid service.</p></a>
+    <a class="card" href="#heartbeat"><h3>heartbeat</h3><p>A loop that sleeps, and log lines with numbers in them.</p></a>
+    <a class="card" href="#shout"><h3>shout</h3><p>A request/reply server - the shape of every Godspeed server.</p></a>
+    <a class="card" href="#bootcount"><h3>bootcount</h3><p>Files, a library dependency, and an outcome nobody can know.</p></a>
+    <a class="card" href="#fixedbuf"><h3>fixedbuf</h3><p>A library: text without a heap, tested on your workstation.</p></a>
+  </div>
+
+  <div class="note">
+    <p><strong>They build, package and publish today. None can run yet.</strong> GodspeedOS starts only the
+    services compiled into its own image, and has no public way yet to add one from outside its source tree.
+    <code>godspeed run</code> says so rather than editing the OS for you. Running them waits on the OS.</p>
+  </div>
+
+  <p>The source of every example is in
+  <a href="https://github.com/godspeedhq/godspeed-cli/tree/main/examples"><code>examples/</code></a>. To try
+  one:</p>
+<pre><span class="p">$ </span>git clone https://github.com/godspeedhq/godspeed-cli
+<span class="p">$ </span>cd godspeed-cli/examples/heartbeat
+<span class="p">$ </span>godspeed check
+<span class="o">service heartbeat is valid against GodspeedOS v0.28.0.</span>
+<span class="p">$ </span>godspeed build --all
+<span class="o">Built x86_64 target/x86_64-unknown-none/release/heartbeat
+Built aarch64 target/aarch64-unknown-none/release/heartbeat
+Built armv7 target/armv7a-none-eabi/release/heartbeat
+Built riscv64 target/riscv64imac-unknown-none-elf/release/heartbeat
+These are service binaries, not an OS image; nothing was installed or run.</span></pre>
+
+  <h2>Two things every service has</h2>
+  <p><strong>A contract</strong> - <code>contracts/&lt;name&gt;.toml</code> - states the authority the
+  service <em>requests</em>. It grants nothing: what a service is actually given is the operating system's
+  decision. <code>godspeed check</code> validates it against the OS's own schema. Read it first: it is the
+  whole answer to "what can this program do?"</p>
+  <p><strong>An entry point</strong> - <code>service_main</code> - that is handed a
+  <code>ServiceContext</code>, the only authority the service holds, and never returns. There is no
+  <code>fn main()</code> yet, and no heap: no <code>String</code>, no <code>Vec</code>, no
+  <code>format!</code>. Buffers are arrays you can see, and <code>format_args!</code> formats without
+  allocating.</p>
+
+  <section class="example" id="hello">
+    <h2>hello <span class="tag ok">service</span></h2>
+    <p>What <code>godspeed new service hello</code> creates: log one line, then park - hold still, using no
+    CPU, until stopped.</p>
+<span class="file">src/main.rs</span>
+<pre><span class="c">//! hello: a Godspeed service.</span>
+<span class="c">//!</span>
+<span class="c">//! A service starts at `service_main`, is handed its `ServiceContext` - the only authority it holds -</span>
+<span class="c">//! and never returns. This one logs that it started, then parks: it holds still and uses no CPU until</span>
+<span class="c">//! it is stopped.</span>
+
+#![deny(unsafe_code)]
+#![no_std]
+#![no_main]
+
+use godspeed::{self as gs, ServiceContext};
+
+<span class="c">// `#[no_mangle]` is what lets the loader find the entry point. Without it the service starts at</span>
+<span class="c">// address 0 and faults before its first line. The lint allowance is needed because `#[no_mangle]`</span>
+<span class="c">// itself counts as unsafe code; nothing else in this crate may be.</span>
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn service_main(ctx: ServiceContext) -&gt; ! {
+    ctx.log("hello: started");
+    gs::ipc::park(&amp;ctx)
+}</pre>
+<span class="file">contracts/hello.toml</span>
+<pre><span class="c"># The service contract: what this service REQUESTS. It grants nothing. What a service is actually</span>
+<span class="c"># given is decided by the operating system, not by this file.</span>
+<span class="c"># Format: contracts/schema/service.schema.json in GodspeedOS. `godspeed check` validates against it.</span>
+name    = "hello"
+version = "0.1.0"
+
+[resources.memory]
+request = "32MiB"
+limit   = "32MiB"
+
+[capabilities]
+log_write = true   # write lines to the kernel log - and nothing else</pre>
+  </section>
+
+  <section class="example" id="heartbeat">
+    <h2>heartbeat <span class="tag ok">service</span></h2>
+    <p>Logs how long the machine has been up, every five seconds.</p>
+    <ul>
+      <li><code>gs::task::sleep_ms</code> gives the CPU back for a while - a service that loops without
+      sleeping or waiting burns a core for nothing.</li>
+      <li><code>ctx.log_fmt(format_args!(...))</code> writes a formatted line to the log with no heap.</li>
+      <li>Its contract asks for nothing but the log.</li>
+    </ul>
+<span class="file">src/main.rs</span>
+<pre><span class="c">//! heartbeat: logs how long the machine has been up, every five seconds.</span>
+<span class="c">//!</span>
+<span class="c">//! The smallest service that does something over time: a loop that sleeps - giving the CPU back, not</span>
+<span class="c">//! spinning - and a formatted log line built with `format_args!`, which needs no heap.</span>
+
+#![deny(unsafe_code)]
+#![no_std]
+#![no_main]
+
+use godspeed::{self as gs, ServiceContext};
+
+<span class="c">/// How often to log.</span>
+const EVERY_MS: u64 = 5_000;
+
+<span class="c">// `#[no_mangle]` is what lets the loader find the entry point; it counts as unsafe code, so it alone is</span>
+<span class="c">// allowed.</span>
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn service_main(ctx: ServiceContext) -&gt; ! {
+    ctx.log("heartbeat: started");
+    let mut beats: u64 = 0;
+    loop {
+        gs::task::sleep_ms(&amp;ctx, EVERY_MS);
+        beats = beats.wrapping_add(1);
+        let up = gs::task::uptime_secs(&amp;ctx);
+        ctx.log_fmt(format_args!(
+            "heartbeat: beat {}, up {}m {:02}s",
+            beats,
+            up / 60,
+            up % 60
+        ));
+    }
+}</pre>
+<span class="file">contracts/heartbeat.toml</span>
+<pre><span class="c"># The service contract: what this service REQUESTS. It grants nothing. What a service is actually</span>
+<span class="c"># given is decided by the operating system, not by this file.</span>
+<span class="c"># Format: contracts/schema/service.schema.json in GodspeedOS. `godspeed check` validates against it.</span>
+name    = "heartbeat"
+version = "0.1.0"
+
+[resources.memory]
+request = "32MiB"
+limit   = "32MiB"
+
+[capabilities]
+log_write = true   # write lines to the kernel log - and nothing else</pre>
+  </section>
+
+  <section class="example" id="shout">
+    <h2>shout <span class="tag ok">service</span></h2>
+    <p>A request/reply server: send it text and it answers with the same text in capitals.</p>
+    <ul>
+      <li><strong>It owns an endpoint</strong> (<code>ipc_receive = ["shout"]</code>), and asks to send to
+      no one. It can reach a client only through the reply capability that client puts in its request -
+      no ambient channel, no reaching anyone by name.</li>
+      <li><strong>It never blocks on a client.</strong> <code>try_send_to</code> returns at once, so a slow
+      or vanished client cannot stall the server. A send that succeeds means the reply was queued, not
+      that it was read.</li>
+      <li><strong>It gives each reply capability back</strong> with <code>gs::cap::remove</code>, so a
+      server that runs for years stays bounded.</li>
+      <li>A client is a single call: <code>gs::call::request_within(&amp;ctx, "shout", &amp;request, 5)</code>,
+      which returns the reply, or an error that says what happened - including that nobody can tell.</li>
+    </ul>
+<span class="file">src/main.rs</span>
+<pre><span class="c">//! shout: a request/reply server. Send it text; it answers with the same text in capitals.</span>
+<span class="c">//!</span>
+<span class="c">//! The shape of every Godspeed server: wait for a request, answer over the reply capability the request</span>
+<span class="c">//! carries, and give that capability back. It has no way to reach anyone else - not even the client,</span>
+<span class="c">//! except through the capability the client chose to hand it.</span>
+
+#![deny(unsafe_code)]
+#![no_std]
+#![no_main]
+
+use godspeed::{self as gs, ipc::Message, ServiceContext};
+
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn service_main(ctx: ServiceContext) -&gt; ! {
+    ctx.log("shout: ready");
+
+    loop {
+<span class="c">        // Block until a request arrives. With no client, the service simply waits here, idle.</span>
+        let mut request = gs::ipc::recv(&amp;ctx);
+
+<span class="c">        // A request carries a capability to reply with. One without is malformed: say so and move on.</span>
+        let Some(reply_to) = gs::ipc::take_sent_cap(&amp;ctx) else {
+            ctx.log("shout: a request came with no way to reply; dropped");
+            continue;
+        };
+
+<span class="c">        // Capitals, in place: a message is 4 KiB, and there is no heap to spend on a copy.</span>
+        let len = request.payload_bytes().len();
+        request.payload[..len].make_ascii_uppercase();
+        let reply = Message::from_bytes(&amp;request.payload[..len]);
+
+<span class="c">        // Never block on a client: a slow or vanished one must not stall the server. A send that</span>
+<span class="c">        // succeeds means the reply was queued, not that it was read.</span>
+        if let Err(e) = gs::ipc::try_send_to(&amp;ctx, reply_to, &amp;reply) {
+            ctx.log_fmt(format_args!(
+                "shout: could not reply ({}); the client must ask again",
+                e.as_str()
+            ));
+        }
+
+<span class="c">        // Done with the reply capability: give its slot back, so a long-running server stays bounded.</span>
+        gs::cap::remove(&amp;ctx, reply_to);
+    }
+}</pre>
+<span class="file">contracts/shout.toml</span>
+<pre><span class="c"># The service contract: what this service REQUESTS. It grants nothing. What a service is actually</span>
+<span class="c"># given is decided by the operating system, not by this file.</span>
+<span class="c"># Format: contracts/schema/service.schema.json in GodspeedOS. `godspeed check` validates against it.</span>
+name    = "shout"
+version = "0.1.0"
+
+[resources.memory]
+request = "32MiB"
+limit   = "32MiB"
+
+[capabilities]
+log_write   = true      # write lines to the kernel log
+ipc_receive = ["shout"]   # own the endpoint clients send requests to
+<span class="c"># No ipc_send: a server answers over the reply capability each request carries, not a named peer.</span></pre>
+  </section>
+
+  <section class="example" id="bootcount">
+    <h2>bootcount <span class="tag ok">service</span></h2>
+    <p>Counts how many times the machine has started, in a file.</p>
+    <ul>
+      <li><strong>Files through <code>gs::fs</code>.</strong> <code>Fs::new</code> grants nothing; the
+      contract's <code>ipc_send = ["fs"]</code> is why the calls can work at all. Without it, the same code
+      compiles and every call fails <code>Unreachable</code>. The library makes the filesystem
+      convenient; only the OS can make it available.</li>
+      <li><strong>A library dependency</strong>: <a href="#fixedbuf">fixedbuf</a>, by path, turns the count
+      into bytes without a heap and parses it back.</li>
+      <li><strong>Honest failure.</strong> A write that got no answer may or may not have happened. It says
+      exactly that - and does not write again, which could count one boot twice. Something in the file it
+      does not understand is left alone, not overwritten.</li>
+    </ul>
+<span class="file">src/main.rs</span>
+<pre><span class="c">//! bootcount: counts how many times this machine has started, in a file.</span>
+<span class="c">//!</span>
+<span class="c">//! Reads the count, adds one, writes it back, and logs it - using the filesystem through the standard</span>
+<span class="c">//! library, and the `fixedbuf` library from this repository to turn the number into bytes without a heap.</span>
+<span class="c">//! The part worth reading is the error handling: a write that may or may not have happened is reported</span>
+<span class="c">//! as exactly that, never retried blindly.</span>
+
+#![deny(unsafe_code)]
+#![no_std]
+#![no_main]
+
+use core::fmt::Write;
+use fixedbuf::{parse_u64, FixedBuf};
+use godspeed::{self as gs, Error, ServiceContext};
+
+const PATH: &amp;str = "/bootcount.txt";
+
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn service_main(ctx: ServiceContext) -&gt; ! {
+<span class="c">    // Grants nothing by itself: it reaches the filesystem only because the contract asks for</span>
+<span class="c">    // `ipc_send = ["fs"]` and the OS granted it. Without that, every call below fails `Unreachable`.</span>
+    let mut disk = gs::fs::Fs::new(&amp;ctx);
+
+    let mut stored = [0u8; 32];
+    let previous = match disk.read_into(PATH, &amp;mut stored) {
+        Ok(n) =&gt; match parse_u64(&amp;stored[..n]) {
+            Some(count) =&gt; count,
+            None =&gt; {
+<span class="c">                // Never overwrite something we do not understand.</span>
+                ctx.log_fmt(format_args!(
+                    "bootcount: {} does not hold a count; leaving it alone",
+                    PATH
+                ));
+                gs::ipc::park(&amp;ctx);
+            }
+        },
+        Err(Error::NotFound) =&gt; 0, // the first boot
+        Err(e) =&gt; {
+            gs::io::report(&amp;ctx, "bootcount: read", e);
+            gs::ipc::park(&amp;ctx);
+        }
+    };
+
+    let count = previous.saturating_add(1);
+    let mut text = FixedBuf::&lt;24&gt;::new();
+<span class="c">    // A u64 and a newline always fit in 24 bytes, so this cannot fail.</span>
+    let _ = writeln!(text, "{}", count);
+
+    match disk.write(PATH, text.as_bytes()) {
+        Ok(()) =&gt; ctx.log_fmt(format_args!("bootcount: this is boot {}", count)),
+<span class="c">        // No answer, or the filesystem died holding the request: the count may or may not be saved.</span>
+<span class="c">        // Saying so is the honest answer; writing again could count this boot twice.</span>
+        Err(e @ (Error::OutcomeUnknown | Error::PeerDied)) =&gt; ctx.log_fmt(format_args!(
+            "bootcount: boot {}, but whether it was saved is unknown ({})",
+            count,
+            e.as_str()
+        )),
+        Err(e) =&gt; gs::io::report(&amp;ctx, "bootcount: write", e),
+    }
+
+    gs::ipc::park(&amp;ctx)
+}</pre>
+<span class="file">contracts/bootcount.toml</span>
+<pre><span class="c"># The service contract: what this service REQUESTS. It grants nothing. What a service is actually</span>
+<span class="c"># given is decided by the operating system, not by this file.</span>
+<span class="c"># Format: contracts/schema/service.schema.json in GodspeedOS. `godspeed check` validates against it.</span>
+name    = "bootcount"
+version = "0.1.0"
+
+[resources.memory]
+request = "32MiB"
+limit   = "32MiB"
+
+[capabilities]
+log_write = true      # write lines to the kernel log
+ipc_send  = ["fs"]    # ask the filesystem service for files</pre>
+<span class="file">Cargo.toml (dependencies)</span>
+<pre>[dependencies]
+<span class="c"># The fixedbuf library from this repository, beside this project.</span>
+fixedbuf = { path = "../fixedbuf" }
+<span class="c"># The Godspeed standard library, at the OS release this project was created against.</span>
+godspeed = { git = "https://github.com/godspeedhq/godspeed-os", tag = "v0.28.0" }</pre>
+  </section>
+
+  <section class="example" id="fixedbuf">
+    <h2>fixedbuf <span class="tag ok">library</span></h2>
+    <p>Text built into a fixed-size buffer. <code>write!</code> into it, then hand
+    <code>as_bytes()</code> to whatever sends or stores them. Text that does not fit is refused - and the
+    buffer says so - never wrapped around or silently lost, and a character is never cut in half.</p>
+    <p>A library is plain <code>no_std</code> Rust, so it builds for every architecture, and
+    <code>godspeed test</code> runs its tests on your workstation:</p>
+<pre><span class="p">$ </span>godspeed test
+<span class="o">Running tests...
+test tests::builds_text_in_place ... ok
+test tests::never_splits_a_character ... ok
+test tests::parses_numbers_and_refuses_the_rest ... ok
+test tests::refuses_what_does_not_fit_and_says_so ... ok
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+All tests passed.</span></pre>
+<span class="file">src/lib.rs</span>
+<pre><span class="c">//! fixedbuf: text built into a fixed-size buffer, for programs with no heap.</span>
+<span class="c">//!</span>
+<span class="c">//! A Godspeed service has no allocator, so there is no `String` and no `format!`. Logging needs neither</span>
+<span class="c">//! (`ctx.log_fmt(format_args!(...))` formats straight to the log), but an IPC message or a file needs the</span>
+<span class="c">//! bytes themselves. `FixedBuf` is a `core::fmt::Write` over an array: `write!` into it, then hand</span>
+<span class="c">//! `as_bytes()` to whatever sends or stores them. Text that does not fit is refused - `write!` returns an</span>
+<span class="c">//! error and `is_truncated()` says so - never wrapped around or silently lost.</span>
+<span class="c">//!</span>
+<span class="c">//! Plain `no_std` Rust with no dependencies, so it builds for every Godspeed architecture and its tests run</span>
+<span class="c">//! on your workstation with `godspeed test`.</span>
+
+#![cfg_attr(not(test), no_std)]
+#![deny(unsafe_code)]
+
+use core::fmt;
+
+<span class="c">/// Up to `N` bytes of UTF-8 text, built in place.</span>
+pub struct FixedBuf&lt;const N: usize&gt; {
+    bytes: [u8; N],
+    len: usize,
+    truncated: bool,
+}
+
+impl&lt;const N: usize&gt; FixedBuf&lt;N&gt; {
+<span class="c">    /// An empty buffer.</span>
+    pub const fn new() -&gt; Self {
+        FixedBuf {
+            bytes: [0; N],
+            len: 0,
+            truncated: false,
+        }
+    }
+
+<span class="c">    /// What has been written so far.</span>
+    pub fn as_bytes(&amp;self) -&gt; &amp;[u8] {
+        &amp;self.bytes[..self.len]
+    }
+
+<span class="c">    /// The same, as text. Only whole characters are ever kept, so this always succeeds.</span>
+    pub fn as_str(&amp;self) -&gt; &amp;str {
+        core::str::from_utf8(self.as_bytes()).unwrap_or("")
+    }
+
+<span class="c">    /// Whether some text was refused because it did not fit.</span>
+    pub fn is_truncated(&amp;self) -&gt; bool {
+        self.truncated
+    }
+
+<span class="c">    /// Empty it, to build the next piece of text in the same space.</span>
+    pub fn clear(&amp;mut self) {
+        self.len = 0;
+        self.truncated = false;
+    }
+}
+
+impl&lt;const N: usize&gt; Default for FixedBuf&lt;N&gt; {
+    fn default() -&gt; Self {
+        Self::new()
+    }
+}
+
+impl&lt;const N: usize&gt; fmt::Write for FixedBuf&lt;N&gt; {
+    fn write_str(&amp;mut self, s: &amp;str) -&gt; fmt::Result {
+        let room = N - self.len;
+        if s.len() &lt;= room {
+            self.bytes[self.len..self.len + s.len()].copy_from_slice(s.as_bytes());
+            self.len += s.len();
+            return Ok(());
+        }
+<span class="c">        // Keep what fits, cut at a character boundary so the text stays valid UTF-8, and say so.</span>
+        let mut cut = room;
+        while !s.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        self.bytes[self.len..self.len + cut].copy_from_slice(&amp;s.as_bytes()[..cut]);
+        self.len += cut;
+        self.truncated = true;
+        Err(fmt::Error)
+    }
+}
+
+<span class="c">/// Parse an unsigned decimal number, allowing surrounding ASCII whitespace (a trailing newline, say).</span>
+<span class="c">///</span>
+<span class="c">/// Returns `None` for no digits, any other byte, or a value that does not fit in a `u64` - a refusal,</span>
+<span class="c">/// never a wrapped or truncated number.</span>
+pub fn parse_u64(text: &amp;[u8]) -&gt; Option&lt;u64&gt; {
+    let text = text.trim_ascii();
+    if text.is_empty() {
+        return None;
+    }
+    let mut value: u64 = 0;
+    for &amp;b in text {
+        if !b.is_ascii_digit() {
+            return None;
+        }
+        value = value.checked_mul(10)?.checked_add(u64::from(b - b'0'))?;
+    }
+    Some(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_u64, FixedBuf};
+    use core::fmt::Write;
+
+    #[test]
+    fn builds_text_in_place() {
+        let mut buf = FixedBuf::&lt;32&gt;::new();
+        write!(buf, "boot {} of {}", 3, "this machine").unwrap();
+        assert_eq!(buf.as_str(), "boot 3 of this machine");
+        assert!(!buf.is_truncated());
+        buf.clear();
+        write!(buf, "{}", 42).unwrap();
+        assert_eq!(buf.as_bytes(), b"42");
+    }
+
+    #[test]
+    fn refuses_what_does_not_fit_and_says_so() {
+        let mut buf = FixedBuf::&lt;8&gt;::new();
+        assert!(write!(buf, "{}", "123456789").is_err());
+        assert_eq!(buf.as_str(), "12345678");
+        assert!(buf.is_truncated());
+    }
+
+    #[test]
+    fn never_splits_a_character() {
+        let mut buf = FixedBuf::&lt;5&gt;::new();
+        assert!(write!(buf, "abcé!").is_err()); // 'é' is two bytes: only "abc" + 'é' would be 5
+        assert_eq!(buf.as_str(), "abcé");
+        let mut buf = FixedBuf::&lt;4&gt;::new();
+        assert!(write!(buf, "abcé").is_err());
+        assert_eq!(buf.as_str(), "abc");
+    }
+
+    #[test]
+    fn parses_numbers_and_refuses_the_rest() {
+        assert_eq!(parse_u64(b"7\n"), Some(7));
+        assert_eq!(parse_u64(b"  18446744073709551615 "), Some(u64::MAX));
+        assert_eq!(parse_u64(b""), None);
+        assert_eq!(parse_u64(b"\n"), None);
+        assert_eq!(parse_u64(b"12a"), None);
+        assert_eq!(parse_u64(b"18446744073709551616"), None); // one past u64::MAX
+    }
+}</pre>
+  </section>
+
+  <h2 id="next">From an example to a published package</h2>
+  <ol class="steps">
+    <li>Name your namespace in <code>godspeed.toml</code>: <code>publisher = "alice"</code>, and a
+    <code>license</code>.</li>
+    <li><code>godspeed package</code> builds every architecture and shows exactly what would be published,
+    with every file's size and SHA-256 - before anything leaves your machine.</li>
+    <li><code>godspeed publish</code> signs it and publishes it as <code>alice/heartbeat</code>.
+    <a href="publishing.html">Publishing</a> covers the one-time setup.</li>
+  </ol>
+
+  <h2 id="not-yet">What you cannot build yet, and why</h2>
+  <div class="table-scroll"><table>
+    <tr><th>You want</th><th>What is missing in GodspeedOS</th></tr>
+    <tr><td>A command-line tool that runs and exits</td><td>A terminating task: no <code>fn main()</code>, no exit call. Every program is a service that never returns.</td></tr>
+    <tr><td>An app with a user interface</td><td>Public application interfaces.</td></tr>
+    <tr><td>A driver for a device</td><td>A way to grant a device to a driver built outside the OS tree.</td></tr>
+    <tr><td>A network client or server</td><td><code>gs::net</code> exists and an example would compile, but nothing yet grants an outside service access to the network stack.</td></tr>
+    <tr><td>A program in C, C++ or Go</td><td>A non-Rust interface to the OS. <a href="./#languages">More</a>.</td></tr>
+  </table></div>
+  <p>The CLI refuses these kinds with the reason rather than generating a project that pretends. Each is the
+  OS's to build, and the CLI will follow.</p>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    Godspeed CLI is free software under the GPL-2.0.
+    <a href="https://github.com/godspeedhq/godspeed-cli">Source</a> ·
+    <a href="https://github.com/godspeedhq/godspeed-os">GodspeedOS</a> ·
+    <a href="https://github.com/godspeedhq/godspeed-registry">Registry</a>
+  </div>
+</footer>
+</body>
+</html>

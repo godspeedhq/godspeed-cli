@@ -1,0 +1,6 @@
+# Fixture: the parts of a GodspeedOS checkout the CLI reads. Not a real OS.
+[workspace]
+members = []
+
+[workspace.package]
+version = "0.28.0"

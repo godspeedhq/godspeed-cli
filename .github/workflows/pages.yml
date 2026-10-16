@@ -1,0 +1,43 @@
+name: pages
+
+# Publishes site/ - the guide and its examples - to GitHub Pages, as it is: plain HTML and CSS, so there
+# is no site generator to install or keep up to date, and nothing to build.
+#
+# Runs when site/ changes on main, or by hand. The examples the site shows are real projects under
+# examples/, built for every architecture by ci.yml's templates job, so the site never shows code that
+# does not compile.
+#
+# Needs, once: Settings -> Pages -> Build and deployment -> Source: "GitHub Actions".
+
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time; a newer one replaces a queued one, never one half way through.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Publish the site
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

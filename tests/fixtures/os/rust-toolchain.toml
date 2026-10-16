@@ -1,0 +1,3 @@
+[toolchain]
+channel = "nightly-2026-05-16"
+targets = ["x86_64-unknown-none", "armv7a-none-eabi", "aarch64-unknown-none", "riscv64imac-unknown-none-elf"]
