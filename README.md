@@ -45,7 +45,11 @@ target all four Godspeed architectures regardless.)
 
 **Updating:** run the same installer again. It fetches the latest release, checks it the same way, and
 swaps it in for the old binary only once it is verified. (`GODSPEED_VERSION` pins a version, including an
-older one.) The CLI does not update itself.
+older one.) The CLI does not update itself, but it tells you when there is something to update to: at
+most once a day it asks GitHub which release is the latest - in the background, never slowing or failing
+a command - and if it is newer, says so after the command's output. It sends nothing but that request;
+it stays quiet in scripts, pipes and CI; `GODSPEED_NO_UPDATE_CHECK=1` turns it off; and `godspeed
+doctor` asks on demand.
 
 Or build it yourself with Rust:
 

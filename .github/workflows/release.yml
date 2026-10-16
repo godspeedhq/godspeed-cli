@@ -165,7 +165,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           version="${GITHUB_REF_NAME#cli-v}"
-          cat > notes.md <<EOF
+          # The release's own notes, reviewed in a pull request like any other change, come first.
+          : > notes.md
+          if [ -f ".github/release-notes/$GITHUB_REF_NAME.md" ]; then
+            cat ".github/release-notes/$GITHUB_REF_NAME.md" >> notes.md
+            printf '\n## ⬇️ Install\n\n' >> notes.md
+          fi
+          cat >> notes.md <<EOF
           Install on Linux or macOS:
 
               curl --proto '=https' --tlsv1.2 -sSf https://github.com/${{ github.repository }}/releases/latest/download/install.sh | sh
@@ -178,4 +184,4 @@ jobs:
           the one this release lists; releases are not signed yet.
           EOF
           gh release create "$GITHUB_REF_NAME" dist/* --draft --verify-tag \
-            --title "godspeed $version" --notes-file notes.md
+            --title "🚀 godspeed $version" --notes-file notes.md

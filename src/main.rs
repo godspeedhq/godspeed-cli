@@ -14,6 +14,7 @@ mod project;
 mod registry;
 mod signing;
 mod target;
+mod update;
 
 use clap::{Parser, Subcommand};
 use diag::Diagnostic;
@@ -289,7 +290,9 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    match dispatch(cli) {
+    // Asked in the background while the command runs; told, if at all, after its output.
+    let update = update::start();
+    let code = match dispatch(cli) {
         Ok(()) => ExitCode::SUCCESS,
         Err(diagnostics) => {
             let count = diagnostics.len();
@@ -307,5 +310,7 @@ fn main() -> ExitCode {
             let code = diagnostics.first().map(|d| d.kind.exit_code()).unwrap_or(1);
             ExitCode::from(code as u8)
         }
-    }
+    };
+    update::finish(update);
+    code
 }
