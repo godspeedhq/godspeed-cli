@@ -49,6 +49,14 @@
     <tr><td><code>doctor</code></td><td>Check your environment: this CLI's version against the latest release, the OS checkout, the pinned toolchain, every target, QEMU. Says the command that fixes each problem.</td></tr>
   </table></div>
 
+  <h3>This CLI itself</h3>
+  <div class="table-scroll"><table>
+    <tr><th>Command</th><th>What it does</th></tr>
+    <tr><td><code>self update</code></td><td>Download the latest release's build for this machine and its <code>SHA256SUMS</code>, check one against the other, run the new binary, and only then swap it in, in one rename. A checksum mismatch, or a binary that does not run, changes nothing.</td></tr>
+    <tr><td><code>self uninstall [--yes]</code></td><td>Remove this binary, the installer's folder and the PATH entries the installer added, after listing them and asking. Keeps your configuration directory: your signing key, tokens and trust records.</td></tr>
+  </table></div>
+  <p>A copy built with <code>cargo install</code> belongs to Cargo; both commands point you to Cargo instead.</p>
+
   <h3>Packaging and verifying</h3>
   <div class="table-scroll"><table>
     <tr><th>Command</th><th>What it does</th></tr>
@@ -134,7 +142,7 @@ x86_64.elf  aarch64.elf  armv7.elf  riscv64.elf</pre>
     <tr><td>16</td><td>Invalid package: a missing or extra file, a manifest that breaks the format</td></tr>
     <tr><td>17</td><td>Integrity failure: a size or checksum mismatch</td></tr>
     <tr><td>18</td><td>Authentication failure: not logged in, or the token is unknown, revoked or expired</td></tr>
-    <tr><td>19</td><td>The registry could not be reached, before anything was published</td></tr>
+    <tr><td>19</td><td>The registry (or, for <code>self update</code>, GitHub) could not be reached, before anything was changed</td></tr>
     <tr><td>20</td><td>GodspeedOS does not provide this yet</td></tr>
     <tr><td>21</td><td>This CLI does not implement this yet</td></tr>
     <tr><td>22</td><td>This is the native package manager's command, not this CLI's</td></tr>
@@ -144,6 +152,7 @@ x86_64.elf  aarch64.elf  armv7.elf  riscv64.elf</pre>
     <tr><td>26</td><td>Signature failure: a signature is malformed, or the named key did not sign this manifest</td></tr>
     <tr><td>27</td><td>Untrusted: the registry's signed metadata does not vouch for it - an unknown, retired or revoked key, or metadata that is unsigned, expired, rolled back or inconsistent</td></tr>
     <tr><td>28</td><td>Not found: the registry has no such package, or no such version of it</td></tr>
+    <tr><td>29</td><td>Cancelled: you declined, or there was no terminal to ask and <code>--yes</code> was not given; nothing was changed</td></tr>
     <tr><td>30</td><td>A local file could not be read or written</td></tr>
   </table></div>
 </main>

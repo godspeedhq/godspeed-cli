@@ -93,8 +93,8 @@ Next:
 <span class="p">&gt; </span>irm https://github.com/godspeedhq/godspeed-cli/releases/latest/download/install.ps1 | iex</pre>
       <p>Each installs a prebuilt binary for Linux, macOS or Windows (x86_64 or Arm64) to
       <code>~/.godspeed/bin</code>, after checking it against the release's checksums - a mismatch installs
-      nothing. Running it again updates, and the CLI tells you, at most once a day, when there is a newer
-      release. Or build it yourself: <code>cargo install --git https://github.com/godspeedhq/godspeed-cli --tag cli-v0.1.0 --locked godspeed-cli</code>.</p>
+      nothing. <code>godspeed self update</code> updates it, with the same checks, and the CLI tells you, at
+      most once a day, when there is a newer release. Or build it yourself: <code>cargo install --git https://github.com/godspeedhq/godspeed-cli --tag cli-v0.1.0 --locked godspeed-cli</code>.</p>
     </li>
     <li>
       <h3>Point it at a GodspeedOS release</h3>

@@ -34,8 +34,12 @@ pub fn native(verb: &str) -> Diagnostic {
                  machine. This is the developer CLI: it creates, builds, tests, packages and publishes."
         ),
     )
-    .next(
+    .next(format!(
         "Run it on the Godspeed machine. (The native package manager is not built yet: GodspeedOS cannot \
-               start a program it did not ship with.)",
-    )
+               start a program it did not ship with.){}",
+        match verb {
+            "update" | "uninstall" => format!(" To {verb} this CLI itself: `godspeed self {verb}`."),
+            _ => String::new(),
+        }
+    ))
 }

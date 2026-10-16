@@ -40,13 +40,24 @@ Debian - would be cheap to add: two more static cross-builds. They are left out 
 runners for either, so they could only be tested under emulation. Packages, the programs the CLI builds,
 target all four Godspeed architectures regardless.)
 
-**Updating:** run the same installer again. It fetches the latest release, checks it the same way, and
-swaps it in for the old binary only once it is verified. (`GODSPEED_VERSION` pins a version, including an
-older one.) The CLI does not update itself, but it tells you when there is something to update to: at
-most once a day it asks GitHub which release is the latest - in the background, never slowing or failing
-a command - and if it is newer, says so after the command's output. It sends nothing but that request;
-it stays quiet in scripts, pipes and CI; `GODSPEED_NO_UPDATE_CHECK=1` turns it off; and `godspeed
-doctor` asks on demand.
+**Updating**, as with rustup:
+
+    godspeed self update
+
+It downloads the latest release's build for your machine and the release's `SHA256SUMS`, checks one
+against the other, runs the new binary to confirm it works, and only then swaps it in for the old one, in
+a single rename - until then nothing has changed. (0.1.0 predates it: update that one by running the
+installer again, which does the same checks. The installer, with `GODSPEED_VERSION`, is also how to go to
+a particular or older version.) The CLI also tells you when there is something to update to: at most once
+a day it asks GitHub which release is the latest - in the background, never slowing or failing a command -
+and if it is newer, says so after the command's output. It sends nothing but that request; it stays quiet
+in scripts, pipes and CI; `GODSPEED_NO_UPDATE_CHECK=1` turns it off; and `godspeed doctor` asks on demand.
+
+**Uninstalling:** `godspeed self uninstall` removes the binary, its folder, and the PATH entries the
+installer added, after listing them and asking (`--yes` to skip the question). It keeps your configuration
+directory - your signing key, tokens and trust records - and says where it is. A copy built with `cargo
+install` belongs to Cargo: `self update` and `self uninstall` point you to `cargo install` and `cargo
+uninstall godspeed-cli` instead.
 
 Or build it yourself with Rust:
 
@@ -130,6 +141,7 @@ every architecture in CI and explained on the [examples page](https://godspeedhq
 | `build [--arch <isa> \| --all]` | works: one ELF per architecture for a service, an rlib for a library |
 | `test` | works for a library (on the host); refused for a service (see below) |
 | `doctor` | works |
+| `self update`, `self uninstall` | work: update this CLI to the latest release, verified before it replaces anything; or remove it and what the installer added, keeping your keys |
 | `package [--arch <isa>] [--out <dir>]` | works: builds every architecture, writes a package directory, and verifies it from disk before reporting it |
 | `verify <dir>` | works, with no OS checkout: checks every file against the manifest, and says it proves integrity only |
 | `run` | refused: GodspeedOS has no public way to run a service built outside its tree |
@@ -231,7 +243,7 @@ Scripts and CI can tell failures apart without reading the text:
 | 16 | invalid package: a missing or extra file, a manifest that breaks the format |
 | 17 | integrity failure: a size or checksum mismatch |
 | 18 | authentication failure: not logged in, or the token is unknown, revoked or expired |
-| 19 | the registry could not be reached, before anything was published |
+| 19 | the registry (or, for `self update`, GitHub) could not be reached, before anything was changed |
 | 20 | GodspeedOS does not provide this yet |
 | 21 | this CLI does not implement this yet |
 | 22 | this is the native package manager's command, not this CLI's |
@@ -241,6 +253,7 @@ Scripts and CI can tell failures apart without reading the text:
 | 26 | signature failure: a signature is malformed, or the named key did not sign this manifest |
 | 27 | untrusted: the registry's signed metadata does not vouch for it - an unknown, retired or revoked key, or metadata that is unsigned, expired, rolled back or inconsistent |
 | 28 | not found: the registry has no such package, or no such version of it |
+| 29 | cancelled: you declined, or there was no terminal to ask and `--yes` was not given; nothing was changed |
 | 30 | a local file could not be read or written |
 
 ## Development

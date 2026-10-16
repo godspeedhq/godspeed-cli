@@ -406,7 +406,7 @@ pub fn refused(doing: &str, registry: &str, r: &Refusal) -> Diagnostic {
             Kind::Conflict,
             Stage::Upload,
             format!(
-                "The registry answered with `{}`, which this CLI does not know. Update the CLI.",
+                "The registry answered with `{}`, which this CLI does not know. Update the CLI: `godspeed self update`.",
                 r.error
             ),
         ),

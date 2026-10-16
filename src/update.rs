@@ -3,8 +3,8 @@
 //! At most once a day, a command asks GitHub - in the background, while the command does its work - which
 //! release is the latest, and remembers the answer in the config directory. When the command is done, if
 //! that answer is newer than this binary, one notice goes to stderr. It never changes what a command does,
-//! never makes one fail, and never updates anything: updating is re-running the installer, which checks
-//! what it downloads (README, "Install").
+//! never makes one fail, and never updates anything: updating is `godspeed self update`, which checks what
+//! it downloads before it replaces anything (`cmd::self_manage`).
 //!
 //! It stays quiet where a notice would be noise or a surprise: when stderr is not a terminal (a script, a
 //! pipe, the tests), when `CI` is set, and when `GODSPEED_NO_UPDATE_CHECK` is set. The only thing it sends
@@ -19,8 +19,7 @@ use std::path::Path;
 use std::sync::mpsc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const RELEASES: &str = "https://github.com/godspeedhq/godspeed-cli/releases";
-const INSTALL: &str = "https://github.com/godspeedhq/godspeed-cli#install";
+pub const RELEASES: &str = "https://github.com/godspeedhq/godspeed-cli/releases";
 pub const OFF_ENV: &str = "GODSPEED_NO_UPDATE_CHECK";
 /// How often to ask.
 const EVERY_SECS: u64 = 24 * 60 * 60;
@@ -100,7 +99,7 @@ pub fn finish(check: Option<Check>) {
         eprintln!();
         eprintln!("A newer godspeed is available: {latest} (this is {}).", current());
         eprintln!("  What changed: {RELEASES}/tag/cli-v{latest}");
-        eprintln!("  To update, run the installer again: {INSTALL}");
+        eprintln!("  To update: godspeed self update");
         eprintln!("  ({OFF_ENV}=1 turns this notice off.)");
     }
 }
@@ -139,7 +138,7 @@ fn version_in(location: &str) -> Option<Version> {
     tag[..end].parse().ok()
 }
 
-fn releases_url() -> String {
+pub fn releases_url() -> String {
     #[cfg(debug_assertions)]
     if let Some(url) = std::env::var_os(TEST_URL_ENV).filter(|u| !u.is_empty()) {
         return url.to_string_lossy().trim_end_matches('/').to_string();

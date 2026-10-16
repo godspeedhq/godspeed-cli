@@ -127,6 +127,12 @@ enum Command {
     Whoami,
     /// Check the development environment: OS checkout, toolchain, targets, QEMU
     Doctor,
+    /// Update or uninstall this CLI
+    #[command(name = "self")]
+    SelfManage {
+        #[command(subcommand)]
+        action: SelfAction,
+    },
 
     // The native package manager's verbs. Hidden: they are answered only so that typing one here gets an
     // explanation instead of "unrecognised subcommand".
@@ -166,6 +172,18 @@ enum Command {
 enum TokenAction {
     /// Make a token, print it once and store it nowhere (for a CI secret), with its fingerprint
     New,
+}
+
+#[derive(Subcommand)]
+enum SelfAction {
+    /// Download the latest release, verify it, and replace this binary with it
+    Update,
+    /// Remove this binary and the PATH entries the installer added; keep your keys and tokens
+    Uninstall {
+        /// Do not ask for confirmation
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -279,6 +297,10 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
         Command::Logout => cmd::account::logout(reg),
         Command::Whoami => cmd::account::whoami(reg),
         Command::Doctor => cmd::doctor::run(os).map_err(Into::into),
+        Command::SelfManage { action } => match action {
+            SelfAction::Update => cmd::self_manage::update().map_err(Into::into),
+            SelfAction::Uninstall { yes } => cmd::self_manage::uninstall(yes).map_err(Into::into),
+        },
         Command::Search { .. } => Err(cmd::unavailable::native("search").into()),
         Command::Info { .. } => Err(cmd::unavailable::native("info").into()),
         Command::Install { .. } => Err(cmd::unavailable::native("install").into()),
@@ -290,8 +312,13 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    // Asked in the background while the command runs; told, if at all, after its output.
-    let update = update::start();
+    cmd::self_manage::tidy();
+    // Asked in the background while the command runs; told, if at all, after its output. Not while the CLI
+    // is updating or uninstalling itself: that command says everything there is to say.
+    let update = match cli.command {
+        Command::SelfManage { .. } => None,
+        _ => update::start(),
+    };
     let code = match dispatch(cli) {
         Ok(()) => ExitCode::SUCCESS,
         Err(diagnostics) => {
