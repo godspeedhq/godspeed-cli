@@ -1,5 +1,8 @@
 # godspeed-cli
 
+📖 **Documentation: https://godspeedhq.github.io/godspeed-cli/** - the guide, worked examples, publishing,
+and a full command reference.
+
 `godspeed`, the developer CLI for [GodspeedOS](https://github.com/godspeedhq/godspeed-os): create, check,
 build, package, sign and publish Godspeed software on your workstation, against the public contracts of a
 GodspeedOS release - and fetch anyone's published package with every signature checked.
@@ -8,8 +11,7 @@ GodspeedOS release - and fetch anyone's published package with every signature c
     godspeed build --all          # one binary per architecture: x86_64, aarch64, armv7, riscv64
     godspeed publish              # signed, uploaded, and installable as you/hello
 
-**Guide and examples: [godspeedhq.github.io/godspeed-cli](https://godspeedhq.github.io/godspeed-cli/)**
-(source in [`site/`](site/)). The rules the CLI is built to are in [CLAUDE.md](CLAUDE.md).
+The rules the CLI is built to are in [CLAUDE.md](CLAUDE.md).
 
 **Status:** the first half of the workflow works end to end - create, check, build, test (libraries),
 package, sign, publish, fetch - against the live registry. Installing and running on a Godspeed machine
@@ -69,6 +71,21 @@ Push a tag `cli-v<version>`, equal to the version in `Cargo.toml`. `.github/work
 all six binaries, runs each where it can, tests both installers against exactly those binaries on Linux,
 macOS and Windows, and then creates a **draft** release. Nothing is public until the draft is published;
 the installers' `releases/latest` never resolves to a draft.
+
+## Documentation
+
+The guide is at **[godspeedhq.github.io/godspeed-cli](https://godspeedhq.github.io/godspeed-cli/)**:
+
+- [Overview](https://godspeedhq.github.io/godspeed-cli/): what you can build, getting started, what works
+  and what waits
+- [Examples](https://godspeedhq.github.io/godspeed-cli/examples.html): real services and a library, with
+  their source, each built for every architecture in CI
+- [Publishing](https://godspeedhq.github.io/godspeed-cli/publishing.html): your key and token, CI, and
+  verifying anyone's package
+- [Reference](https://godspeedhq.github.io/godspeed-cli/reference.html): every command, option,
+  environment variable, file and exit code
+
+Its source is [`site/`](site/), plain HTML published by `.github/workflows/pages.yml`.
 
 ## What you can create
 
