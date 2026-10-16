@@ -124,6 +124,7 @@ where the OS tracks it, and what to make instead (exit 20) - never a template th
     godspeed build --all
     godspeed package               # needs publisher = "<you>" in godspeed.toml
     godspeed verify target/package/<you>-hello-0.1.0
+    godspeed publish --dry-run     # everything but the upload: signs, checks your namespace and the version
 
 It is an ordinary Rust project, so `cargo fmt` and `cargo clippy` work in it as usual.
 
@@ -141,6 +142,7 @@ every architecture in CI and explained on the [examples page](https://godspeedhq
 | `build [--arch <isa> \| --all]` | works: one ELF per architecture for a service, an rlib for a library |
 | `test` | works for a library (on the host); refused for a service (see below) |
 | `doctor` | works |
+| `completions <shell>` | works: tab completion for bash, zsh, fish, PowerShell and elvish (`godspeed completions --help` says how to load it) |
 | `self update`, `self uninstall` | work: update this CLI to the latest release, verified before it replaces anything; or remove it and what the installer added, keeping your keys |
 | `package [--arch <isa>] [--out <dir>]` | works: builds every architecture, writes a package directory, and verifies it from disk before reporting it |
 | `verify <dir>` | works, with no OS checkout: checks every file against the manifest, and says it proves integrity only |
@@ -169,8 +171,9 @@ The contract grants nothing. What a service is actually given is the operating s
 ## Publishing
 
     godspeed key generate              # once; send the PUBLIC key it prints to the registry maintainer
-    godspeed login --registry <url>    # makes your token; send the FINGERPRINT it prints to the maintainer
+    godspeed login                     # makes your token; send the FINGERPRINT it prints to the maintainer
     godspeed whoami                    # once they approve it: your account and namespaces
+    godspeed publish --dry-run         # everything but the upload, to check first
     godspeed publish                   # needs publisher = "<you>" in godspeed.toml
 
 Your token is made on your machine, like an SSH key, and never leaves it: the maintainer approves only its
@@ -185,19 +188,23 @@ The official registry ([godspeed-registry](https://github.com/godspeedhq/godspee
 
     https://godspeed-registry.bankole-422.workers.dev
 
-That address is temporary - it moves to a custom domain - so the CLI has no built-in default yet: name it
-with `--registry`, `GODSPEED_REGISTRY`, or once with `login`. Publishers and their namespaces are approved
-by hand for now, by the registry's maintainer. Its trust root, to pin on first contact:
+and is the default: with no `--registry`, no `GODSPEED_REGISTRY` and no other registry chosen by `login`,
+the CLI uses it. (The address is temporary - it moves to a custom domain, and the default moves with a CLI
+release.) Its trust root is built in: on first contact the CLI accepts the official registry's root only if
+its digest is `sha256:d769d1a64c3105c8da0ffcc2f54aba1c3a16ce4ae707a6d206556f08824a146d`. So verifying a
+published package is just
 
-    godspeed fetch godspeed/hello --registry <url> \
-      --trust-root sha256:d769d1a64c3105c8da0ffcc2f54aba1c3a16ce4ae707a6d206556f08824a146d
+    godspeed fetch godspeed/hello
+
+Publishers and their namespaces are approved by hand for now, by the registry's maintainer.
 
 Every release is signed with your key (`manifest.sig`), and the registry refuses one that is not signed by a
 key registered for your namespace. Your secret key stays in `signing-key.toml` beside the credentials,
 readable by you alone - back it up; in CI, set `GODSPEED_SIGNING_KEY` instead. A signature proves which key
 signed; which keys may sign for a publisher is the registry's offline-signed namespaces metadata, which even
 the registry cannot alter. `godspeed fetch alice/hello` checks all of it the way a Godspeed machine will
-before installing: root (trusted on first contact - pin it with `--trust-root`), timestamp, snapshot,
+before installing: root (built in for the official registry; for another, trusted on first contact unless
+you pin it with `--trust-root`), timestamp, snapshot,
 namespaces, index, manifest, signature, files ([docs/trust-metadata.md](docs/trust-metadata.md)).
 
 ## Other languages
@@ -255,6 +262,11 @@ Scripts and CI can tell failures apart without reading the text:
 | 28 | not found: the registry has no such package, or no such version of it |
 | 29 | cancelled: you declined, or there was no terminal to ask and `--yes` was not given; nothing was changed |
 | 30 | a local file could not be read or written |
+
+`doctor`, `verify` and `whoami` take `--json`: the result is one JSON document on stdout, and a refusal is
+one on stderr - `{"errors": [{"kind", "exit_code", "stage", "headline", "reason", "expected", "next"}]}` -
+with the same exit code. `kind` is a stable name for the code, such as `not-found` for 28. Diagnostics are
+in colour on a terminal; `NO_COLOR` turns that off.
 
 ## Development
 

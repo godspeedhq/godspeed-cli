@@ -91,7 +91,7 @@ each key counts once.
 ## 3. What a client checks, in order
 
 1. **Root.** On first contact, root 1, signed by its own root threshold - trusted on first use, unless the
-   client pins its SHA-256 (`godspeed fetch --trust-root`). Then every later root in turn: root N+1 must be
+   client pins its SHA-256 (`godspeed fetch --trust-root`; the official registry's is built into the CLI). Then every later root in turn: root N+1 must be
    exactly the next version and signed by the threshold of root N's root keys AND its own. The last root
    must not have expired. The client remembers the root it reached.
 2. **Timestamp.** Signed by the root's timestamp threshold; not expired; not an older version than the

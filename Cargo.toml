@@ -27,6 +27,12 @@ ureq = { version = "2.12", default-features = false, features = ["tls", "json"] 
 rpassword = "7"
 # The operating system's random source, for making signing keys. (Already in the tree, through ring.)
 getrandom = "0.2"
+# `godspeed completions <shell>`: generated from the same command definitions, so they never drift.
+clap_complete = "4.6"
+# Colour in diagnostics, only on a terminal that supports it and never with NO_COLOR; enables colour on older
+# Windows consoles. (Both already in the tree, through clap.)
+anstream = "1"
+anstyle = "1"
 
 [profile.release]
 strip = true

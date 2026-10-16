@@ -231,8 +231,8 @@ key.
 - **A compromised online key** can withhold or delay releases and show a frozen view - for at most a
   timestamp's lifetime (one day), after which clients refuse it. It cannot forge a publisher's release.
 - **First contact trusts root 1** unless the client pins its digest (`--trust-root`). The official
-  registry's root 1 digest should be published somewhere independent of the registry - its documentation,
-  the CLI's release notes - and, eventually, built into the CLI.
+  registry's root 1 digest is built into the CLI, and published in its documentation, independent of the
+  registry.
 - **A stolen offline key** is as bad as it sounds; the threshold is what makes one stolen key not enough.
 
 ## 7. What is not in this design

@@ -13,6 +13,16 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::time::Duration;
 
+/// The official Godspeed registry: used when nothing names another. A default only - a package names no
+/// registry, and `--registry`, `GODSPEED_REGISTRY` and `login` choose any other.
+///
+/// The address is temporary (it moves to a custom domain); when it moves, this changes in a release, and the
+/// old address keeps answering meanwhile.
+pub const OFFICIAL: &str = "https://godspeed-registry.bankole-422.workers.dev";
+/// The digest of the official registry's root 1: on first contact with OFFICIAL, its root is accepted only if
+/// it has this digest, as if `--trust-root` had been given. Later roots are each verified by the one before.
+pub const OFFICIAL_ROOT: &str = "sha256:d769d1a64c3105c8da0ffcc2f54aba1c3a16ce4ae707a6d206556f08824a146d";
+
 /// The registry to use when `--registry` is not given.
 pub const REGISTRY_ENV: &str = "GODSPEED_REGISTRY";
 /// A publisher token, for CI: used instead of the stored one, never written anywhere.
@@ -106,24 +116,14 @@ impl Credentials {
     }
 }
 
-/// Which registry, from `--registry`, then `GODSPEED_REGISTRY`, then the one `login` made the default.
+/// Which registry, from `--registry`, then `GODSPEED_REGISTRY`, then the one `login` made the default, then
+/// the official one.
 pub fn resolve(flag: Option<&str>, creds: &Credentials) -> Result<String, Diagnostic> {
     let url = flag
         .map(String::from)
         .or_else(|| std::env::var(REGISTRY_ENV).ok().filter(|v| !v.is_empty()))
-        .or_else(|| creds.default.clone());
-    let Some(url) = url else {
-        return Err(Diagnostic::new(
-            Kind::Environment,
-            Stage::Authentication,
-            "find a registry",
-            "No registry is configured. The official Godspeed registry is not deployed yet, so there is no default.",
-        )
-        .expected(format!(
-            "--registry <url>, the {REGISTRY_ENV} environment variable, or a previous `godspeed login`"
-        ))
-        .next("Run `godspeed login --registry <url>` with the URL and token the registry maintainer gave you."));
-    };
+        .or_else(|| creds.default.clone())
+        .unwrap_or_else(|| OFFICIAL.to_string());
     let url = url.trim_end_matches('/').to_string();
     if !(url.starts_with("https://") || url.starts_with("http://127.0.0.1") || url.starts_with("http://localhost")) {
         return Err(Diagnostic::new(

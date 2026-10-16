@@ -5,7 +5,8 @@
 //!     -> manifest (by digest) -> manifest.sig (by a key namespaces vouch for, for this release) -> files
 //!
 //! The first contact with a registry trusts its root version 1 - on first use, unless `--trust-root` pins its
-//! digest - and remembers it; from then on the CLI only moves forward: each new root must be signed by the
+//! digest, or it is the official registry, whose root 1 digest is built into this CLI - and remembers it;
+//! from then on the CLI only moves forward: each new root must be signed by the
 //! previous one, and an older timestamp or namespaces document than one already seen is refused as a rollback.
 //! This is what a Godspeed machine's package manager will do before installing; `fetch` does it on a
 //! workstation, where it can be inspected.
@@ -190,17 +191,23 @@ pub fn run(spec: &str, registry_flag: Option<&str>, out: Option<&Path>, pin: Opt
             let first = required(&client, &doing, "trust/root/1.toml", METADATA_LIMIT)?;
             let sig = required(&client, &doing, "trust/root/1.sig", METADATA_LIMIT)?;
             let digest = Sha256Digest::of(first.as_bytes());
-            if let Some(pin) = pin {
-                if pin != digest.to_string() {
-                    return Err(fail(TrustError::DigestMismatch(
-                        "the registry's root (by the digest pinned with --trust-root)",
-                    ))
+            // The official registry's root is pinned in this binary; any other is trusted on first use.
+            let built_in = (url == registry::OFFICIAL).then_some(registry::OFFICIAL_ROOT);
+            if let Some(want) = pin.or(built_in) {
+                if want != digest.to_string() {
+                    return Err(fail(TrustError::DigestMismatch(if pin.is_some() {
+                        "the registry's root (by the digest pinned with --trust-root)"
+                    } else {
+                        "the official registry's root (by the digest built into this CLI)"
+                    }))
                     .into());
                 }
             }
             let root = Root::parse(&first).map_err(fail)?;
             trust::verify_by(&root, trust::Role::Root, first.as_bytes(), &sig).map_err(fail)?;
-            if pin.is_none() {
+            if pin.is_none() && built_in.is_some() {
+                eprintln!("First contact with the official registry: its root 1 matches the one built into this CLI.");
+            } else if pin.is_none() {
                 eprintln!("First contact with {url}: trusting its root 1, {digest}.");
                 eprintln!("  Compare it with the digest the registry publishes; pin it with --trust-root next time.");
             }

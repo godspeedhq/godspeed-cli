@@ -144,12 +144,24 @@ pub fn token_new() -> Result<()> {
     Ok(())
 }
 
-pub fn whoami(flag: Option<&str>) -> Result<()> {
+pub fn whoami(flag: Option<&str>, json: bool) -> Result<()> {
     let creds = Credentials::load()?;
     let url = registry::resolve(flag, &creds)?;
     let (token, from) = registry::token(&url, &creds)?;
     let fp = fingerprint(&token);
     match Client::new(&url, Some(token)).whoami() {
+        Answer::Done(me) if json => {
+            let doc = serde_json::json!({
+                "registry": url,
+                "account": me.account,
+                "publishers": me.publishers,
+                "token_expires": me.token_expires,
+                "token_from": from,
+                "fingerprint": fp,
+            });
+            println!("{doc:#}");
+            Ok(())
+        }
         Answer::Done(me) => {
             println!("{} on {url}", me.account);
             println!("  may publish under: {}", namespaces(&me.publishers));

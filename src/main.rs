@@ -107,9 +107,16 @@ enum Command {
     Verify {
         /// The package directory
         path: PathBuf,
+        /// Print the result as JSON
+        #[arg(long)]
+        json: bool,
     },
     /// Package the project and publish it to a registry
-    Publish,
+    Publish {
+        /// Package, sign, authenticate and check the namespace and version, but upload nothing
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Make a publisher token for a registry and print its fingerprint, for the maintainer to approve
     Login {
         /// Store an existing token instead (read from the terminal, or from standard input), checked first
@@ -124,9 +131,20 @@ enum Command {
     /// Revoke the token at the registry and remove it from this machine
     Logout,
     /// Show which account the token belongs to, and where it may publish
-    Whoami,
+    Whoami {
+        /// Print the result as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Check the development environment: OS checkout, toolchain, targets, QEMU
-    Doctor,
+    Doctor {
+        /// Print the result as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Print a shell completion script: bash, zsh, fish, powershell or elvish
+    #[command(after_help = COMPLETIONS_HELP)]
+    Completions { shell: clap_complete::Shell },
     /// Update or uninstall this CLI
     #[command(name = "self")]
     SelfManage {
@@ -166,6 +184,38 @@ enum Command {
         #[arg(trailing_var_arg = true)]
         _rest: Vec<String>,
     },
+}
+
+const COMPLETIONS_HELP: &str = "Load them in your shell's startup file:
+  bash        echo 'eval \"$(godspeed completions bash)\"' >> ~/.bashrc
+  zsh         echo 'eval \"$(godspeed completions zsh)\"' >> ~/.zshrc
+  fish        godspeed completions fish > ~/.config/fish/completions/godspeed.fish
+  PowerShell  Add-Content $PROFILE 'godspeed completions powershell | Out-String | Invoke-Expression'";
+
+/// The command tree that completions describe: every command but the hidden ones (the native package
+/// manager's verbs), which some shells' generators would otherwise offer.
+fn completion_command() -> clap::Command {
+    use clap::CommandFactory;
+    let full = Cli::command();
+    let mut tree = clap::Command::new("godspeed").version(env!("CARGO_PKG_VERSION"));
+    for arg in full.get_arguments() {
+        tree = tree.arg(arg.clone());
+    }
+    for sub in full.get_subcommands().filter(|c| !c.is_hide_set()) {
+        tree = tree.subcommand(sub.clone());
+    }
+    tree
+}
+
+impl Command {
+    /// Whether the command was asked for JSON: then its result is one JSON document on stdout, and a refusal
+    /// is one on stderr.
+    fn json(&self) -> bool {
+        matches!(
+            self,
+            Command::Verify { json: true, .. } | Command::Whoami { json: true } | Command::Doctor { json: true }
+        )
+    }
 }
 
 #[derive(Subcommand)]
@@ -280,23 +330,31 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
             KeyAction::Generate => cmd::sign::key_generate(),
             KeyAction::Show => cmd::sign::key_show(),
         },
-        Command::Verify { path } => {
+        Command::Verify { path, json } => {
             let verified = cmd::verify::run(&path)?;
-            cmd::verify::report(&verified);
+            if json {
+                println!("{:#}", cmd::verify::to_json(&verified));
+            } else {
+                cmd::verify::report(&verified);
+            }
             Ok(())
         }
-        Command::Publish => {
+        Command::Publish { dry_run } => {
             let platform = Platform::locate(os)?;
             let project = current_project()?;
-            cmd::publish::run(&platform, &project, reg)
+            cmd::publish::run(&platform, &project, reg, dry_run)
         }
         Command::Login { with_token } => cmd::account::login(reg, with_token),
         Command::Token {
             action: TokenAction::New,
         } => cmd::account::token_new(),
         Command::Logout => cmd::account::logout(reg),
-        Command::Whoami => cmd::account::whoami(reg),
-        Command::Doctor => cmd::doctor::run(os).map_err(Into::into),
+        Command::Whoami { json } => cmd::account::whoami(reg, json),
+        Command::Doctor { json } => cmd::doctor::run(os, json).map_err(Into::into),
+        Command::Completions { shell } => {
+            clap_complete::generate(shell, &mut completion_command(), "godspeed", &mut std::io::stdout());
+            Ok(())
+        }
         Command::SelfManage { action } => match action {
             SelfAction::Update => cmd::self_manage::update().map_err(Into::into),
             SelfAction::Uninstall { yes } => cmd::self_manage::uninstall(yes).map_err(Into::into),
@@ -315,23 +373,33 @@ fn main() -> ExitCode {
     cmd::self_manage::tidy();
     // Asked in the background while the command runs; told, if at all, after its output. Not while the CLI
     // is updating or uninstalling itself: that command says everything there is to say.
+    // Nor for output another program reads: completions are loaded at every shell start, JSON is parsed.
+    let json = cli.command.json();
     let update = match cli.command {
-        Command::SelfManage { .. } => None,
+        Command::SelfManage { .. } | Command::Completions { .. } => None,
+        _ if json => None,
         _ => update::start(),
     };
     let code = match dispatch(cli) {
         Ok(()) => ExitCode::SUCCESS,
         Err(diagnostics) => {
             let count = diagnostics.len();
-            for (i, d) in diagnostics.iter().enumerate() {
-                if i > 0 {
-                    eprintln!();
+            if json {
+                let errors: Vec<_> = diagnostics.iter().map(Diagnostic::to_json).collect();
+                eprintln!("{:#}", serde_json::json!({ "errors": errors }));
+            } else {
+                // Styled for a terminal; anstream drops the styling where colour is unsupported or unwanted
+                // (not a terminal, NO_COLOR) and turns it on for older Windows consoles.
+                for (i, d) in diagnostics.iter().enumerate() {
+                    if i > 0 {
+                        eprintln!();
+                    }
+                    anstream::eprint!("{}", d.styled());
                 }
-                eprint!("{d}");
-            }
-            if count > 1 {
-                eprintln!();
-                eprintln!("{count} problems found.");
+                if count > 1 {
+                    eprintln!();
+                    eprintln!("{count} problems found.");
+                }
             }
             // The first diagnostic's kind decides the exit code; `check` only ever returns one kind.
             let code = diagnostics.first().map(|d| d.kind.exit_code()).unwrap_or(1);
