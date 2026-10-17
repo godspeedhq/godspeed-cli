@@ -6,10 +6,11 @@ use core::fmt;
 pub const PART_MAX: usize = 64;
 
 /// The longest a whole package name, `publisher/name`, may be, in bytes. An installed package runs under
-/// this name and is reached by it, and 32 bytes is the longest name a GodspeedOS machine's name directory and
-/// task table hold. A longer name would install and then be unreachable by its own clients, so it is refused
-/// when it is made: at `godspeed check` and `package`, at the registry, and on the machine at install.
-pub const FULL_MAX: usize = 32;
+/// this name and is reached by it, and 128 bytes is the longest name a GodspeedOS machine holds (from 0.29.0).
+/// Each part may be [`PART_MAX`], so the one name this refuses is the one with both parts at it. A longer
+/// name would install and then be unreachable by its own clients, so it is refused when it is made: at
+/// `godspeed check` and `package`, at the registry, and on the machine at install.
+pub const FULL_MAX: usize = 128;
 
 /// A package name, namespaced by its publisher: `alice/clock`.
 ///
@@ -50,7 +51,7 @@ impl NameError {
             NameError::EmptyPart => "the publisher and the name must both be non-empty",
             NameError::TooLong => "the publisher and the name are each at most 64 bytes",
             NameError::FullTooLong => {
-                "publisher/name is at most 32 bytes in all, the longest name a GodspeedOS machine reaches a program by"
+                "publisher/name is at most 128 bytes in all, the longest name a GodspeedOS machine reaches a program by"
             }
             NameError::BadStart => "the publisher and the name each start with a lowercase letter",
             NameError::BadCharacter => "the publisher and the name use only lowercase letters, digits and '-'",
@@ -152,16 +153,13 @@ mod tests {
         }
         let long = "a".repeat(PART_MAX + 1);
         assert_eq!(PackageName::parse(&std::format!("alice/{long}")), Err(TooLong));
-        // Within each part's limit, but past the whole name's: refused as too long in all.
-        assert_eq!(
-            PackageName::parse(&std::format!("alice/{}", "a".repeat(PART_MAX))),
-            Err(FullTooLong)
-        );
-        // Exactly FULL_MAX bytes is accepted, one more is not.
-        let fits = std::format!("alice/{}", "a".repeat(FULL_MAX - "alice/".len()));
+        // A whole part is fine.
+        assert!(PackageName::parse(&std::format!("alice/{}", "a".repeat(PART_MAX))).is_ok());
+        // Exactly FULL_MAX bytes is accepted; both parts whole is one more, and refused as too long in all.
+        let fits = std::format!("{}/{}", "a".repeat(PART_MAX), "b".repeat(PART_MAX - 1));
         assert_eq!(fits.len(), FULL_MAX);
         assert!(PackageName::parse(&fits).is_ok());
-        assert_eq!(PackageName::parse(&std::format!("{fits}a")), Err(FullTooLong));
+        assert_eq!(PackageName::parse(&std::format!("{fits}b")), Err(FullTooLong));
         // The longest names published so far fit.
         assert!(PackageName::parse("godspeed/selfcheck-service").is_ok());
     }

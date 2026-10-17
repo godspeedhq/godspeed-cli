@@ -121,15 +121,17 @@ fn new_with_a_publisher_fills_it_in_and_still_checks_clean() {
 
 #[test]
 fn check_refuses_a_package_name_longer_than_a_machine_holds() {
-    // `publisher/name` is what an installed package runs under and is reached by: 32 bytes at most.
+    // `publisher/name` is what an installed package runs under and is reached by: 128 bytes at most. Each
+    // part may be 64, so both at 64 is the one name the whole-name limit refuses.
     let dir = scratch("long_name");
     let os = fixture_os();
-    let publisher = "a".repeat(30);
-    let o = godspeed(&dir, Some(&os), &["new", "service", "hello", "--publisher", &publisher]);
+    let publisher = "a".repeat(64);
+    let name = format!("h{}", "b".repeat(63));
+    let o = godspeed(&dir, Some(&os), &["new", "service", &name, "--publisher", &publisher]);
     assert_eq!(code(&o), 0, "{}", stderr(&o));
-    let o = godspeed(&dir.join("hello"), Some(&os), &["check"]);
-    assert_ne!(code(&o), 0, "a 36-byte package name must be refused");
-    assert!(stderr(&o).contains("at most 32 in all"), "{}", stderr(&o));
+    let o = godspeed(&dir.join(&name), Some(&os), &["check"]);
+    assert_ne!(code(&o), 0, "a 129-byte package name must be refused");
+    assert!(stderr(&o).contains("at most 128 in all"), "{}", stderr(&o));
 }
 
 #[test]
