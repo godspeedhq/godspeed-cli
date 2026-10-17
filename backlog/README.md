@@ -32,4 +32,5 @@ repository.
 
 | # | Item | Severity | Blocks |
 |---|------|----------|--------|
-| [1](01-the-platform-kit-reads-the-os-repository-s-private-build-files.md) | The platform kit reads six of the OS repository's own build files at their paths, and hard-codes the entry symbol no file holds; option B (the OS publishes `godspeed-platform.toml`) is proposed, not approved | Contract / fragility | nothing today; any OS release that moves one of the six files |
+| [1](01-the-platform-kit-reads-the-os-repository-s-private-build-files.md) | The platform kit reads six of the OS repository's own build files at their paths, and hard-codes the entry symbol no file holds; option B (the OS publishes `godspeed-platform.toml`) is approved and built on both sides, released on neither | Contract / fragility | nothing today; any OS release that moves one of the six files |
+| [2](02-one-snapshot-names-every-package-so-every-client-downloads-it-all.md) | One signed snapshot names every package, so every client downloads and verifies all of it on every command; the native package manager holds 16 KiB of it, about 150 packages | Scale | nothing today (one package); every registry command on a Godspeed machine past about 150 packages |
