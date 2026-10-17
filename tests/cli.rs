@@ -160,7 +160,6 @@ fn kinds_the_os_cannot_run_are_refused_with_the_reason() {
     let dir = scratch("kinds");
     let os = fixture_os();
     for (kind, mentions) in [
-        ("utility", "terminating task"),
         ("app", "application interfaces"),
         ("driver", "device"),
     ] {

@@ -32,11 +32,11 @@ fn replaceable(dir: &Path) -> bool {
 
 pub fn run(platform: &Platform, project: &Project, arches: &[&'static Arch], out: Option<&Path>) -> Result<PathBuf> {
     let headline = "package the project";
-    if project.kind != ProjectKind::Service {
+    if !project.kind.runs() {
         return Err(refuse(
             Kind::NotImplemented,
             headline,
-            "Only services are packaged. A library is depended on, not installed, and how libraries are \
+            "Only services and utilities are packaged. A library is depended on, not installed, and how libraries are \
              distributed is not defined yet."
                 .into(),
         )
@@ -113,7 +113,7 @@ pub fn run(platform: &Platform, project: &Project, arches: &[&'static Arch], out
         format: pkg::FORMAT,
         name,
         version,
-        kind: pkg::Kind::Service,
+        kind: if project.kind == ProjectKind::Utility { pkg::Kind::Utility } else { pkg::Kind::Service },
         description: project.description.as_deref(),
         license: project.license.as_deref(),
         os_release,

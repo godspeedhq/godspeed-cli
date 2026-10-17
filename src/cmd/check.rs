@@ -4,7 +4,7 @@
 
 use crate::diag::{Diagnostic, Kind, Result, Stage};
 use crate::platform::Platform;
-use crate::project::{Project, ProjectKind};
+use crate::project::Project;
 
 fn problem(reason: String) -> Diagnostic {
     Diagnostic::new(Kind::InvalidProject, Stage::Validation, "check the project", reason)
@@ -19,7 +19,7 @@ pub fn run(platform: &Platform, project: &Project) -> Result<()> {
 
     check_toolchain(platform, project, &mut problems);
     check_stdlib(platform, project, &mut problems);
-    if project.kind == ProjectKind::Service {
+    if project.kind.runs() {
         check_contract(platform, project, cargo_name, &mut problems);
         check_entry_point(project, &platform.entry, &mut problems);
     }
@@ -53,7 +53,7 @@ pub fn check_toolchain(platform: &Platform, project: &Project, problems: &mut Ve
 /// If the project depends on the stdlib, it must be the release of the OS it is built against.
 fn check_stdlib(platform: &Platform, project: &Project, problems: &mut Vec<Diagnostic>) {
     let Some(dep) = project.stdlib_dependency() else {
-        if project.kind == ProjectKind::Service {
+        if project.kind.runs() {
             problems.push(
                 problem("Cargo.toml does not depend on `godspeed`, the Godspeed standard library.".into())
                     .expected(format!(

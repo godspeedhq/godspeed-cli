@@ -1,0 +1,13 @@
+# The utility's contract: what it REQUESTS. It grants nothing. What a utility is actually given is
+# decided by the operating system, not by this file: the shell it runs under is always its first peer,
+# and any `ipc_send` peer here is asked of the operator at `godspeed install`.
+# Format: contracts/schema/service.schema.json in GodspeedOS. `godspeed check` validates against it.
+name    = "{{name}}"
+version = "0.1.0"
+
+[resources.memory]
+request = "16MiB"
+limit   = "16MiB"
+
+[capabilities]
+log_write = true   # write lines to the kernel log - and nothing else

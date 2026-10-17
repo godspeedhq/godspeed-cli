@@ -19,6 +19,9 @@ pub const FORMAT: u32 = 1;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProjectKind {
     Service,
+    /// A program that does one job and ends: built and packaged exactly as a service, with a contract, and run by
+    /// the shell for one command line instead of kept running.
+    Utility,
     Library,
 }
 
@@ -26,8 +29,14 @@ impl ProjectKind {
     pub fn as_str(self) -> &'static str {
         match self {
             ProjectKind::Service => "service",
+            ProjectKind::Utility => "utility",
             ProjectKind::Library => "library",
         }
+    }
+
+    /// Is this a program GodspeedOS runs - built to an image, with a contract - rather than a library?
+    pub fn runs(self) -> bool {
+        matches!(self, ProjectKind::Service | ProjectKind::Utility)
     }
 }
 
@@ -94,17 +103,18 @@ impl Project {
         }
         let kind = match raw.kind.as_str() {
             "service" => ProjectKind::Service,
+            "utility" => ProjectKind::Utility,
             "library" => ProjectKind::Library,
             other => {
                 return Err(
                     invalid("read the project", format!("{MANIFEST} names kind \"{other}\"."))
-                        .expected("\"service\" or \"library\" - the kinds GodspeedOS can build today"),
+                        .expected("\"service\", \"utility\" or \"library\" - the kinds GodspeedOS can build today"),
                 );
             }
         };
         let contract = match (kind, raw.contract) {
-            (ProjectKind::Service, Some(c)) => Some(PathBuf::from(c)),
-            (ProjectKind::Service, None) => {
+            (ProjectKind::Service | ProjectKind::Utility, Some(c)) => Some(PathBuf::from(c)),
+            (ProjectKind::Service | ProjectKind::Utility, None) => {
                 return Err(
                     invalid("read the project", format!("{MANIFEST} is a service with no contract."))
                         .expected("contract = \"contracts/<name>.toml\": a service declares the authority it requests"),

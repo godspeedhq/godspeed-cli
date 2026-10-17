@@ -187,6 +187,7 @@ pub fn parse(text: &str) -> Result<OwnedManifest, ParseError> {
     let version = c.version("package.version", &package.version);
     let kind = match c.required("package.kind", &package.kind) {
         Some("service") => Some(Kind::Service),
+        Some("utility") => Some(Kind::Utility),
         Some("library") => {
             c.bad(
                 "package.kind",
@@ -197,7 +198,7 @@ pub fn parse(text: &str) -> Result<OwnedManifest, ParseError> {
             None
         }
         Some(_) => {
-            c.bad("package.kind", ProblemKind::Malformed("the kind is \"service\""));
+            c.bad("package.kind", ProblemKind::Malformed("the kind is \"service\" or \"utility\""));
             None
         }
         None => None,

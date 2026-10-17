@@ -51,6 +51,37 @@ const SERVICE: &[File] = &[
     },
 ];
 
+const UTILITY: &[File] = &[
+    File {
+        path: "godspeed.toml",
+        body: include_str!("../../templates/utility/godspeed.toml"),
+    },
+    File {
+        path: "Cargo.toml",
+        body: include_str!("../../templates/service/Cargo.toml.template"),
+    },
+    File {
+        path: "contracts/{{name}}.toml",
+        body: include_str!("../../templates/utility/contracts/contract.toml"),
+    },
+    File {
+        path: "src/main.rs",
+        body: include_str!("../../templates/utility/src/main.rs"),
+    },
+    File {
+        path: "README.md",
+        body: include_str!("../../templates/utility/README.md"),
+    },
+    File {
+        path: "rust-toolchain.toml",
+        body: TOOLCHAIN,
+    },
+    File {
+        path: ".gitignore",
+        body: GITIGNORE,
+    },
+];
+
 const LIBRARY: &[File] = &[
     File {
         path: "godspeed.toml",
@@ -81,12 +112,6 @@ const LIBRARY: &[File] = &[
 /// Kinds the CLI knows and the OS cannot run yet: why, and where the OS tracks it.
 const NOT_YET: &[(&str, &str, &str)] = &[
     (
-        "utility",
-        "A utility is a program that does one job and ends. GodspeedOS has no terminating task yet: every \
-      program is a service that never returns, and there is no way for a program to end itself.",
-        "GodspeedOS docs/stdlib-design.md, section 1 (options A and B)",
-    ),
-    (
         "app",
         "An app is a user-facing program on public application interfaces. GodspeedOS has none yet, and no \
       terminating task either.",
@@ -100,7 +125,7 @@ const NOT_YET: &[(&str, &str, &str)] = &[
     ),
 ];
 
-const KINDS: &str = "service, library (and later: utility, app, driver)";
+const KINDS: &str = "service, utility, library (and later: app, driver)";
 
 pub fn run(
     platform: &Platform,
@@ -111,6 +136,7 @@ pub fn run(
 ) -> Result<PathBuf> {
     let kind = match kind {
         "service" => ProjectKind::Service,
+        "utility" => ProjectKind::Utility,
         "library" => ProjectKind::Library,
         other => {
             if let Some((k, why, tracked)) = NOT_YET.iter().find(|(k, ..)| *k == other) {
@@ -154,6 +180,7 @@ pub fn run(
 
     let files = match kind {
         ProjectKind::Service => SERVICE,
+        ProjectKind::Utility => UTILITY,
         ProjectKind::Library => LIBRARY,
     };
     let targets = platform

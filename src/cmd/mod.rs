@@ -13,7 +13,7 @@ pub mod unavailable;
 pub mod verify;
 
 use crate::diag::{Diagnostic, Kind, Stage};
-use crate::platform::Platform;
+use crate::platform::{Platform, Source, OS_GIT_URL};
 use std::path::Path;
 use std::process::Command;
 
@@ -25,6 +25,25 @@ pub fn cargo(platform: &Platform, dir: &Path) -> Command {
     let mut c = Command::new("cargo");
     c.current_dir(dir).env("RUSTUP_TOOLCHAIN", &platform.toolchain);
     c
+}
+
+/// `--config` arguments that build against a CHECKOUT's own standard library, for after the subcommand.
+///
+/// Built against a checkout (`--os`), the project gets that checkout's stdlib, not the release its Cargo.toml
+/// names: "built against this OS" is then literally true, and a checkout ahead of its last release can be
+/// developed against before that release exists. A cached kit has no stdlib of its own, so the tag is used as
+/// written. Put AFTER the subcommand, beside any other `--config`: given before the subcommand, it was replaced
+/// by the rustflags `--config` that `build` gives after it, and the build silently used the tag.
+pub fn stdlib_patch(platform: &Platform) -> Vec<String> {
+    if !matches!(platform.source, Source::Checkout) {
+        return Vec::new();
+    }
+    let stdlib = platform.root.join("stdlib").join("rust");
+    if !stdlib.join("Cargo.toml").exists() {
+        return Vec::new();
+    }
+    let path = toml::Value::String(stdlib.to_string_lossy().replace('\\', "/"));
+    vec!["--config".into(), format!("patch.\"{OS_GIT_URL}\".godspeed.path={path}")]
 }
 
 /// The Rust targets installed for `toolchain`, or a diagnostic saying the toolchain itself is missing.

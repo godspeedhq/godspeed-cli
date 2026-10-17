@@ -45,7 +45,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Create a new project: `service` or `library`
+    /// Create a new project: `service`, `utility` or `library`
     New {
         /// service | library
         kind: String,
@@ -311,8 +311,8 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
             for b in &built {
                 println!("Built {} {}", b.arch.name, b.artifact.display());
             }
-            if project.kind == project::ProjectKind::Service {
-                println!("These are service binaries, not an OS image; nothing was installed or run.");
+            if project.kind.runs() {
+                println!("These are program binaries, not an OS image; nothing was installed or run.");
             }
             Ok(())
         }

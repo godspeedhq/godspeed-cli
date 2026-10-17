@@ -848,9 +848,9 @@ protocols.
 
 | Kind | What it is | Can the OS run it today? |
 |---|---|---|
-| `service` | A managed component with a lifecycle and declared authority requirements | **Yes.** Every runnable program on Godspeed is a service today |
+| `service` | A managed component with a lifecycle and declared authority requirements | **Yes.** Kept running by the supervisor; `godspeed install` starts it at every boot |
 | `library` | Reusable code for other Godspeed projects; not executable or installable on its own | **Yes**, as a Rust crate. How it is distributed and depended on is defined separately from executable packages |
-| `utility` | A program that performs one operation and ends | **No.** There is no terminating task: no `fn main()`, and no way for a program to end itself (the OS's `docs/stdlib-design.md` 1). `ask` is a short-lived program only because the shell ends it |
+| `utility` | A program that performs one operation and ends | **Yes, from GodspeedOS 0.29.0** (and a checkout ahead of 0.28.0). The OS's `Exit` syscall (its CLAUDE.md 14.5 amendment, 2026-10-17) and `gs::program`: the shell runs an installed utility by its name, hands it its arguments, shows or pipes its output and says its status. A release before that cannot build one: the template uses `gs::program` |
 | `app` | A user-facing program on public application interfaces | **No.** There are no public application interfaces yet |
 | `driver` | A userspace driver on public driver interfaces (`gs::driver`) and explicitly delegated hardware | **Not for third parties.** `gs::driver` exists, but device authority is granted by the supervisor's compiled spawn rows, by device kind; a driver outside the OS tree has no way to be granted a device |
 

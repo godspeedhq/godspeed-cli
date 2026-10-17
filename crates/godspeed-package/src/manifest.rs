@@ -26,9 +26,13 @@ pub const MAX_LICENSE: usize = 64;
 /// What kind of program a package holds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
-    /// A managed component the OS spawns, with a service contract. The only kind GodspeedOS can run,
-    /// so the only kind format 1 packages.
+    /// A managed component the OS spawns, with a service contract, and keeps running.
     Service,
+    /// A program that does one job and ends, with a service contract: started by the shell for one command line,
+    /// handed its arguments, and ended with a status (GodspeedOS `Exit`, its CLAUDE.md 14.5 amendment of
+    /// 2026-10-17). A new value in format 1, not a new format: a reader that does not know it refuses the
+    /// manifest by naming the kind, which is the refusal it already gives any kind it does not package.
+    Utility,
 }
 
 impl Kind {
@@ -36,6 +40,7 @@ impl Kind {
     pub const fn as_str(self) -> &'static str {
         match self {
             Kind::Service => "service",
+            Kind::Utility => "utility",
         }
     }
 }

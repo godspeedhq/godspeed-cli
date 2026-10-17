@@ -101,7 +101,7 @@ pub fn run(platform: &Platform, project: &Project, arches: &[&'static Arch]) -> 
     }
 
     eprintln!("Fetching dependencies...");
-    let fetched = cargo(platform, &project.root).arg("fetch").status();
+    let fetched = cargo(platform, &project.root).arg("fetch").args(super::stdlib_patch(platform)).status();
     match fetched {
         Ok(s) if s.success() => {}
         Ok(_) => {
@@ -130,7 +130,7 @@ pub fn run(platform: &Platform, project: &Project, arches: &[&'static Arch]) -> 
     for arch in arches {
         eprintln!("Building {name} for {} ({})...", arch.name, arch.triple);
         let mut flags = platform.rustflags(arch.triple);
-        if project.kind == ProjectKind::Service {
+        if project.kind.runs() {
             // How a service is linked is the OS's fact, read from its checkout (see `platform`).
             flags.push("-C".into());
             flags.push(format!("link-arg=-T{}", platform.linker_script.display()));
@@ -141,6 +141,7 @@ pub fn run(platform: &Platform, project: &Project, arches: &[&'static Arch]) -> 
         let status = cargo(platform, &project.root)
             .args(["build", "--release", "--target", arch.triple, "--config"])
             .arg(format!("target.{}.rustflags={}", arch.triple, flags_toml))
+            .args(super::stdlib_patch(platform))
             .status();
         match status {
             Ok(s) if s.success() => {}
@@ -167,7 +168,7 @@ pub fn run(platform: &Platform, project: &Project, arches: &[&'static Arch]) -> 
 
         let dir = project.root.join("target").join(arch.triple).join("release");
         let artifact = match project.kind {
-            ProjectKind::Service => dir.join(&name),
+            ProjectKind::Service | ProjectKind::Utility => dir.join(&name),
             ProjectKind::Library => dir.join(format!("lib{}.rlib", name.replace('-', "_"))),
         };
         if !artifact.is_file() {

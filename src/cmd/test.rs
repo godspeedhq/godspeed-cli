@@ -7,10 +7,10 @@
 use super::{cargo, check};
 use crate::diag::{Diagnostic, Kind, Result, Stage};
 use crate::platform::Platform;
-use crate::project::{Project, ProjectKind};
+use crate::project::Project;
 
 pub fn run(platform: &Platform, project: &Project) -> Result<()> {
-    if project.kind == ProjectKind::Service {
+    if project.kind.runs() {
         return Err(super::unavailable::run_service("test").into());
     }
 
