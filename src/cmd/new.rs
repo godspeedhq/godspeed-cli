@@ -16,6 +16,10 @@ struct File {
 const TOOLCHAIN: &str = include_str!("../../templates/common/rust-toolchain.toml");
 const GITIGNORE: &str = include_str!("../../templates/common/gitignore");
 
+// The template manifests are `Cargo.toml.template`, not `Cargo.toml`: a crate in this repository taken as a git
+// dependency (the OS depends on `godspeed-package`) makes Cargo read every `Cargo.toml` here, and `{{name}}` is
+// not a package name, so every build of the dependent printed two errors.
+
 const SERVICE: &[File] = &[
     File {
         path: "godspeed.toml",
@@ -23,7 +27,7 @@ const SERVICE: &[File] = &[
     },
     File {
         path: "Cargo.toml",
-        body: include_str!("../../templates/service/Cargo.toml"),
+        body: include_str!("../../templates/service/Cargo.toml.template"),
     },
     File {
         path: "contracts/{{name}}.toml",
@@ -54,7 +58,7 @@ const LIBRARY: &[File] = &[
     },
     File {
         path: "Cargo.toml",
-        body: include_str!("../../templates/library/Cargo.toml"),
+        body: include_str!("../../templates/library/Cargo.toml.template"),
     },
     File {
         path: "src/lib.rs",
