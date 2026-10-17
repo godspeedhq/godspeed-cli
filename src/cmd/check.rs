@@ -161,6 +161,21 @@ fn check_contract(platform: &Platform, project: &Project, cargo_name: &str, prob
                 )),
             );
         }
+        // The whole package name is what it runs under and is reached by on the machine, so it is held to the
+        // machine's limit here, before anything is built - not first at `package`.
+        if let Some(publisher) = &project.publisher {
+            let full = format!("{publisher}/{cname}");
+            if full.len() > godspeed_package::FULL_MAX {
+                problems.push(
+                    problem(format!(
+                        "The package name \"{full}\" is {} bytes, and a package name is at most {} in all: it is the name the program runs under and is reached by on a GodspeedOS machine.",
+                        full.len(),
+                        godspeed_package::FULL_MAX
+                    ))
+                    .next("Shorten the service's name (in the contract and Cargo.toml), or the publisher."),
+                );
+            }
+        }
     }
     if let (Some(cv), Some(pv)) = (
         contract.get("version").and_then(|v| v.as_str()),

@@ -51,7 +51,7 @@ pub use digest::{DigestError, Sha256Digest, Sha256Stream};
 pub use index::{index_to_toml, parse_index, OwnedPackageIndex};
 pub use index::{is_timestamp, PackageIndex, Release, INDEX_FORMAT};
 pub use manifest::{Artifact, Kind, Manifest, Problem, ProblemKind, CONTRACT_FILE, FORMAT, MAX_ARTIFACT_SIZE};
-pub use name::{NameError, PackageName, PART_MAX};
+pub use name::{NameError, PackageName, FULL_MAX, PART_MAX};
 pub use sign::{
     signed_message, ManifestSignature, PublicKey, Signature, SignatureError, MANIFEST_CONTEXT, SIGNATURE_FILE,
     SIGNATURE_FORMAT,
