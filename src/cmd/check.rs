@@ -68,6 +68,10 @@ fn check_stdlib(platform: &Platform, project: &Project, problems: &mut Vec<Diagn
     };
     match dep.get("tag").and_then(|t| t.as_str()) {
         Some(tag) if tag == platform.tag() => {}
+        // Built against a checkout, whose own stdlib replaces the tag's (`stdlib_patch`): a release at or
+        // before the checkout's only has to exist for Cargo to resolve. A checkout ahead of its last release
+        // can name that release until its own is tagged.
+        Some(tag) if super::patches_stdlib(platform) && released_at_or_before(tag, &platform.version) => {}
         Some(tag) => problems.push(
             problem(format!(
                 "Cargo.toml uses the stdlib at {tag}, but the OS checkout is {}.",
@@ -89,6 +93,18 @@ fn check_stdlib(platform: &Platform, project: &Project, problems: &mut Vec<Diagn
             )),
         ),
     }
+}
+
+/// Is `tag` (`vX.Y.Z`) a release at or before `version` (`X.Y.Z`)?
+fn released_at_or_before(tag: &str, version: &str) -> bool {
+    let (Some(t), Ok(v)) = (
+        tag.strip_prefix('v')
+            .and_then(|t| t.parse::<godspeed_package::Version>().ok()),
+        version.parse::<godspeed_package::Version>(),
+    ) else {
+        return false;
+    };
+    t <= v
 }
 
 fn check_contract(platform: &Platform, project: &Project, cargo_name: &str, problems: &mut Vec<Diagnostic>) {

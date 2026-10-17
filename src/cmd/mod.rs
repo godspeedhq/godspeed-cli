@@ -35,18 +35,23 @@ pub fn cargo(platform: &Platform, dir: &Path) -> Command {
 /// written. Put AFTER the subcommand, beside any other `--config`: given before the subcommand, it was replaced
 /// by the rustflags `--config` that `build` gives after it, and the build silently used the tag.
 pub fn stdlib_patch(platform: &Platform) -> Vec<String> {
-    if !matches!(platform.source, Source::Checkout) {
+    if !patches_stdlib(platform) {
         return Vec::new();
     }
     let stdlib = platform.root.join("stdlib").join("rust");
-    if !stdlib.join("Cargo.toml").exists() {
-        return Vec::new();
-    }
     let path = toml::Value::String(stdlib.to_string_lossy().replace('\\', "/"));
     vec![
         "--config".into(),
         format!("patch.\"{OS_GIT_URL}\".godspeed.path={path}"),
     ]
+}
+
+/// Does a build against `platform` use the checkout's own stdlib (`stdlib_patch`), whatever release the
+/// project's Cargo.toml names? Then that tag is only RESOLVED by Cargo, never built, so it may be any release
+/// at or before the checkout's - which is what lets a checkout ahead of its last release be built against
+/// before that release is tagged (`check`).
+pub fn patches_stdlib(platform: &Platform) -> bool {
+    matches!(platform.source, Source::Checkout) && platform.root.join("stdlib").join("rust").join("Cargo.toml").exists()
 }
 
 /// The Rust targets installed for `toolchain`, or a diagnostic saying the toolchain itself is missing.
