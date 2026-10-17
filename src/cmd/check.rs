@@ -4,7 +4,7 @@
 
 use crate::diag::{Diagnostic, Kind, Result, Stage};
 use crate::platform::Platform;
-use crate::project::Project;
+use crate::project::{Project, ProjectKind};
 
 fn problem(reason: String) -> Diagnostic {
     Diagnostic::new(Kind::InvalidProject, Stage::Validation, "check the project", reason)
@@ -123,6 +123,26 @@ fn check_contract(platform: &Platform, project: &Project, cargo_name: &str, prob
                 rel.display()
             ))
             .expected("a contract valid against contracts/schema/service.schema.json in the OS checkout"),
+        );
+    }
+
+    // `handover` (a hot upgrade) is a SERVICE's: a utility runs for one command, an app is reloaded by its user when
+    // a new version is installed, and a driver is always stopped and started - two drivers side by side would
+    // program one device. The OS refuses it on a driver at every start; this says so before anything is built.
+    let handover = contract
+        .get("capabilities")
+        .and_then(|c| c.get("handover"))
+        .and_then(|h| h.as_bool())
+        .unwrap_or(false);
+    if handover && project.kind != ProjectKind::Service {
+        let kind = project.kind.as_str();
+        problems.push(
+            problem(format!(
+                "The contract {} declares `handover`, and this project is a{} {kind}: only a service is upgraded hot.",
+                rel.display(),
+                if kind.starts_with('a') { "n" } else { "" },
+            ))
+            .next("Remove `handover` from [capabilities]. A new version of this project replaces the old one by a stop and start."),
         );
     }
 

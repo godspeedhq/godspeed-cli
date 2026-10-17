@@ -174,6 +174,49 @@ fn every_kind_is_made_and_an_unknown_one_is_refused() {
 }
 
 #[test]
+fn only_a_service_may_declare_handover() {
+    // A hot upgrade is a service's. An app, a utility or a driver that declares `handover` is refused by `check`,
+    // saying which kind it is and what to remove; a service is not refused for it by this rule.
+    let dir = scratch("handover_kinds");
+    let os = fixture_os();
+    let declare = |p: &Path, name: &str| {
+        let c = p.join("contracts").join(format!("{name}.toml"));
+        let text = std::fs::read_to_string(&c).unwrap_or_default();
+        assert!(
+            text.contains("[capabilities]"),
+            "{name}: its contract has a [capabilities] table"
+        );
+        std::fs::write(
+            &c,
+            text.replacen("[capabilities]", "[capabilities]\nhandover = true", 1),
+        )
+        .unwrap_or_default();
+    };
+    for kind in ["app", "utility", "driver"] {
+        let name = format!("h{kind}");
+        assert_eq!(code(&godspeed(&dir, Some(&os), &["new", kind, &name])), 0);
+        let p = dir.join(&name);
+        declare(&p, &name);
+        let o = godspeed(&p, Some(&os), &["check"]);
+        assert_ne!(code(&o), 0, "{kind} declaring handover must be refused");
+        assert!(
+            stderr(&o).contains("only a service is upgraded hot"),
+            "{kind}: {}",
+            stderr(&o)
+        );
+    }
+    assert_eq!(code(&godspeed(&dir, Some(&os), &["new", "service", "hsvc"])), 0);
+    let p = dir.join("hsvc");
+    declare(&p, "hsvc");
+    let o = godspeed(&p, Some(&os), &["check"]);
+    assert!(
+        !stderr(&o).contains("only a service is upgraded hot"),
+        "a service may declare it: {}",
+        stderr(&o)
+    );
+}
+
+#[test]
 fn names_follow_the_os_contract_schema() {
     let dir = scratch("names");
     let os = fixture_os();
