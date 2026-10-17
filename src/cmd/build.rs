@@ -101,7 +101,10 @@ pub fn run(platform: &Platform, project: &Project, arches: &[&'static Arch]) -> 
     }
 
     eprintln!("Fetching dependencies...");
-    let fetched = cargo(platform, &project.root).arg("fetch").args(super::stdlib_patch(platform)).status();
+    let fetched = cargo(platform, &project.root)
+        .arg("fetch")
+        .args(super::stdlib_patch(platform))
+        .status();
     match fetched {
         Ok(s) if s.success() => {}
         Ok(_) => {

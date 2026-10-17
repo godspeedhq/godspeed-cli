@@ -173,8 +173,7 @@ const LIBRARY: &[File] = &[
 
 /// Kinds the CLI knows and the OS cannot run yet: why, and where the OS tracks it. Empty since 2026-10-17, when
 /// `driver` joined `service`, `utility` and `app`; kept, so the next kind the OS cannot run is refused with a reason.
-const NOT_YET: &[(&str, &str, &str)] = &[
-];
+const NOT_YET: &[(&str, &str, &str)] = &[];
 
 const KINDS: &str = "service, utility, app, driver, library";
 

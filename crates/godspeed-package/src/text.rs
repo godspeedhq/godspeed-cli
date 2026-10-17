@@ -200,7 +200,10 @@ pub fn parse(text: &str) -> Result<OwnedManifest, ParseError> {
             None
         }
         Some(_) => {
-            c.bad("package.kind", ProblemKind::Malformed("the kind is \"service\", \"utility\", \"app\" or \"driver\""));
+            c.bad(
+                "package.kind",
+                ProblemKind::Malformed("the kind is \"service\", \"utility\", \"app\" or \"driver\""),
+            );
             None
         }
         None => None,

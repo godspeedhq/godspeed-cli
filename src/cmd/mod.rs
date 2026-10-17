@@ -43,7 +43,10 @@ pub fn stdlib_patch(platform: &Platform) -> Vec<String> {
         return Vec::new();
     }
     let path = toml::Value::String(stdlib.to_string_lossy().replace('\\', "/"));
-    vec!["--config".into(), format!("patch.\"{OS_GIT_URL}\".godspeed.path={path}")]
+    vec![
+        "--config".into(),
+        format!("patch.\"{OS_GIT_URL}\".godspeed.path={path}"),
+    ]
 }
 
 /// The Rust targets installed for `toolchain`, or a diagnostic saying the toolchain itself is missing.

@@ -164,7 +164,10 @@ fn every_kind_is_made_and_an_unknown_one_is_refused() {
     let o = godspeed(&dir, Some(&os), &["new", "driver", "drv"]);
     assert_eq!(code(&o), 0, "{}", stderr(&o));
     let contract = std::fs::read_to_string(dir.join("drv").join("contracts").join("drv.toml")).unwrap_or_default();
-    assert!(contract.contains("hw_pci_class"), "a driver's contract names its device by class");
+    assert!(
+        contract.contains("hw_pci_class"),
+        "a driver's contract names its device by class"
+    );
     let o = godspeed(&dir, Some(&os), &["new", "widget", "x"]);
     assert_eq!(code(&o), 10);
     assert!(!dir.join("x").exists(), "a refused kind must write nothing");

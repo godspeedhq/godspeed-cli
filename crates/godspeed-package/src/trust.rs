@@ -767,18 +767,26 @@ pub struct IndexLines {
 const PREVIOUS_MAX: usize = 128;
 
 impl Default for IndexLines {
-    fn default() -> Self { IndexLines::new() }
+    fn default() -> Self {
+        IndexLines::new()
+    }
 }
 
 impl IndexLines {
     /// A reader at the first `index` line.
     pub const fn new() -> IndexLines {
-        IndexLines { previous: [0; PREVIOUS_MAX], plen: 0, started: false }
+        IndexLines {
+            previous: [0; PREVIOUS_MAX],
+            plen: 0,
+            started: false,
+        }
     }
 
     /// The next line: its package name and index digest.
     pub fn next<'l>(&mut self, line: &'l str) -> Result<(&'l str, Sha256Digest), TrustError> {
-        let (n, v) = line.split_once(" = ").ok_or(malformed("a line is not `name = value`"))?;
+        let (n, v) = line
+            .split_once(" = ")
+            .ok_or(malformed("a line is not `name = value`"))?;
         if n != "index" {
             return Err(malformed("a field is missing or out of order"));
         }
@@ -815,7 +823,9 @@ pub fn verify_snapshot_stream(
     if head.header.version != timestamp.snapshot_version {
         return Err(TrustError::WrongVersion(Role::Snapshot));
     }
-    verify_signatures_of(Role::Snapshot, digest, sigs, root.threshold(Role::Snapshot), |k| root.has_key(Role::Snapshot, k))?;
+    verify_signatures_of(Role::Snapshot, digest, sigs, root.threshold(Role::Snapshot), |k| {
+        root.has_key(Role::Snapshot, k)
+    })?;
     head.header.check_fresh(now)
 }
 
@@ -845,7 +855,11 @@ pub fn verify_namespaces_by_head<'a>(
 
 /// Accept a package index against the digest an [`IndexLines`] reader found for it.
 pub fn verify_index_digest(listed: &Sha256Digest, index_text: &str) -> Result<(), TrustError> {
-    if *listed == Sha256Digest::of(index_text.as_bytes()) { Ok(()) } else { Err(TrustError::DigestMismatch("the package index")) }
+    if *listed == Sha256Digest::of(index_text.as_bytes()) {
+        Ok(())
+    } else {
+        Err(TrustError::DigestMismatch("the package index"))
+    }
 }
 
 // ---- signing and writing (the maintainer's tool, the registry) -------------------------------------------
@@ -1117,12 +1131,23 @@ mod tests {
     fn a_snapshot_read_as_a_stream_is_checked_as_the_whole_one_is() {
         let root_t = root_text(1, &[1, 2, 3], 2);
         let root = Root::parse(&root_t).unwrap();
-        let ns = write_namespaces(4, LATER, &[NamespaceKey { publisher: "alice".into(), key: pk(20), ended: None }]);
-        let (ia, ib) = ("format = 1
+        let ns = write_namespaces(
+            4,
+            LATER,
+            &[NamespaceKey {
+                publisher: "alice".into(),
+                key: pk(20),
+                ended: None,
+            }],
+        );
+        let (ia, ib) = (
+            "format = 1
 name = \"alice/a\"
-", "format = 1
+",
+            "format = 1
 name = \"alice/b\"
-");
+",
+        );
         let snap = write_snapshot(
             7,
             SOON,
@@ -1157,9 +1182,15 @@ name = \"alice/b\"
 
         // Refused as the whole one is: another document's digest, a signature by the wrong key, out of order.
         let other = Sha256Digest::of(b"another snapshot");
-        assert_eq!(verify_snapshot_stream(&root, &t, &other, &head, &sig, NOW).unwrap_err(), TrustError::DigestMismatch("the snapshot"));
+        assert_eq!(
+            verify_snapshot_stream(&root, &t, &other, &head, &sig, NOW).unwrap_err(),
+            TrustError::DigestMismatch("the snapshot")
+        );
         let wrong = sign_document(Role::Snapshot, &snap, &[seed(11)]);
-        assert!(matches!(verify_snapshot_stream(&root, &t, &digest, &head, &wrong, NOW), Err(TrustError::NotEnoughSignatures { .. })));
+        assert!(matches!(
+            verify_snapshot_stream(&root, &t, &digest, &head, &wrong, NOW),
+            Err(TrustError::NotEnoughSignatures { .. })
+        ));
         let mut again = IndexLines::new();
         let b_line = snap[head.len..].lines().nth(1).unwrap();
         let a_line = snap[head.len..].lines().next().unwrap();

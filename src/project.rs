@@ -42,7 +42,10 @@ impl ProjectKind {
 
     /// Is this a program GodspeedOS runs - built to an image, with a contract - rather than a library?
     pub fn runs(self) -> bool {
-        matches!(self, ProjectKind::Service | ProjectKind::Utility | ProjectKind::App | ProjectKind::Driver)
+        matches!(
+            self,
+            ProjectKind::Service | ProjectKind::Utility | ProjectKind::App | ProjectKind::Driver
+        )
     }
 }
 
@@ -121,7 +124,9 @@ impl Project {
             }
         };
         let contract = match (kind, raw.contract) {
-            (ProjectKind::Service | ProjectKind::Utility | ProjectKind::App | ProjectKind::Driver, Some(c)) => Some(PathBuf::from(c)),
+            (ProjectKind::Service | ProjectKind::Utility | ProjectKind::App | ProjectKind::Driver, Some(c)) => {
+                Some(PathBuf::from(c))
+            }
             (ProjectKind::Service | ProjectKind::Utility | ProjectKind::App | ProjectKind::Driver, None) => {
                 return Err(
                     invalid("read the project", format!("{MANIFEST} is a service with no contract."))
