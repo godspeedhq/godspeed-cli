@@ -46,7 +46,7 @@ mod verify;
 mod version;
 
 pub use arch::Arch;
-pub use digest::{DigestError, Sha256Digest};
+pub use digest::{DigestError, Sha256Digest, Sha256Stream};
 #[cfg(feature = "toml")]
 pub use index::{index_to_toml, parse_index, OwnedPackageIndex};
 pub use index::{is_timestamp, PackageIndex, Release, INDEX_FORMAT};

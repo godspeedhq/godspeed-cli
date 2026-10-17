@@ -38,9 +38,32 @@ impl fmt::Display for DigestError {
 }
 
 impl Sha256Digest {
-    /// The digest of `bytes`, all at once. (For streaming, see [`crate::ArtifactVerifier`].)
+    /// The digest of `bytes`, all at once. For bytes that arrive in pieces, [`Sha256Stream`]; for an artifact,
+    /// whose size the manifest also states, [`crate::ArtifactVerifier`].
     pub fn of(bytes: &[u8]) -> Self {
         Sha256Digest(Sha256::digest(bytes).into())
+    }
+}
+
+/// A SHA-256 taken in pieces: the same digest [`Sha256Digest::of`] gives the bytes joined. For a document too
+/// large to hold - the snapshot, kept on disk by a client with no heap - hashed as it is written.
+#[derive(Clone, Default)]
+pub struct Sha256Stream(Sha256);
+
+impl Sha256Stream {
+    /// Nothing hashed yet.
+    pub fn new() -> Self {
+        Sha256Stream(Sha256::new())
+    }
+
+    /// Hash the next piece.
+    pub fn update(&mut self, bytes: &[u8]) {
+        self.0.update(bytes);
+    }
+
+    /// The digest of every piece, in order.
+    pub fn finish(self) -> Sha256Digest {
+        Sha256Digest(self.0.finalize().into())
     }
 }
 

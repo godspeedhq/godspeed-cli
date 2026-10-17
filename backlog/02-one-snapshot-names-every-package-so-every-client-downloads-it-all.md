@@ -1,8 +1,19 @@
 # 2. One snapshot names every package, so every client downloads all of it on every command
 
-**Status: OPEN - recorded 2026-10-17, at the operator's request, after the native package manager's
-`godspeed list available` was built. Nothing for it is built. It is the registry format's, so it is this
-repository's (the crate, `docs/trust-metadata.md`, the Worker) to design and change; the native side follows.**
+**Status: OPEN, NARROWED 2026-10-17 - the native side's cliff is FIXED; the download size is what is left.**
+Recorded at the operator's request after `godspeed list available` was built, with two problems in it. The
+second - the native package manager refusing every registry command past about 150 packages, because it held
+the snapshot in a 16 KiB buffer - is gone, by the operator's suggestion the same day: keep the snapshot on the
+DISK and read it back by offset. A signature covers the document's SHA-256, not its bytes, so the snapshot can
+be hashed as it streams to a file, verified from the digest, and read a line at a time; the crate gained exactly
+that (`SnapshotHead`, `IndexLines`, `verify_snapshot_stream`, `verify_namespaces_by_head`, `verify_index_digest`,
+`Sha256Stream`), the OS keeps it in `/system/services/godspeed/trust/<registry>/snapshot.toml`, does not
+download it again while the timestamp names the same one, and pages `list available` and `search` with
+`from <n>`. Memory no longer depends on the registry's size; the disk bound is 256 MiB.
+
+**What stays open is the first problem, the bytes**: a NEW snapshot is still downloaded whole, once per version.
+Kept-and-reused helps only while it does not change, and a large registry's snapshot changes all the time. That
+is the registry format's to fix, below, and nothing in it is urgent until the registry is large.
 
 ## What is wrong
 
@@ -13,9 +24,8 @@ the registry, not with what the command asks about:
 
 - a snapshot line is about 100 bytes, so 10,000 packages is about 1 MB, and a million about 100 MB, fetched
   and verified by every client for every `search`, `info`, `fetch` and `list available`;
-- the native package manager runs with no heap and a 256 KiB stack, and holds the snapshot in a 16 KiB
-  buffer: about 150 packages. Past that, every one of its registry commands refuses, by name ("the snapshot
-  is larger than this machine reads"), including `fetch` of a package that is in it.
+- ~~the native package manager runs with no heap and a 256 KiB stack, and holds the snapshot in a 16 KiB
+  buffer: about 150 packages.~~ Fixed 2026-10-17, above: it keeps the snapshot on disk and reads it by offset.
 
 Paging the output does not help: the client has already had to fetch everything before it can show page one.
 
