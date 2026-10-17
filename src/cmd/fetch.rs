@@ -151,7 +151,7 @@ fn required(client: &Client, doing: &str, path: &str, limit: u64) -> std::result
     })
 }
 
-pub fn run(spec: &str, registry_flag: Option<&str>, out: Option<&Path>, pin: Option<&str>) -> Result<()> {
+pub fn run(spec: &str, registry_flag: Option<&str>, out: Option<&Path>, pin: Option<&str>, json: bool) -> Result<()> {
     let (name_text, wanted) = match spec.split_once('@') {
         Some((n, v)) => (n, Some(v)),
         None => (spec, None),
@@ -396,12 +396,35 @@ pub fn run(spec: &str, registry_flag: Option<&str>, out: Option<&Path>, pin: Opt
     };
     std::fs::rename(&staging, &dest).map_err(|e| Diagnostic::io(&doing, &dest, &e))?;
 
-    let status = match namespaces.status(name.publisher(), &signature.key) {
-        Some(trust::KeyStatus::Retired(at)) => format!(
+    let retired = match namespaces.status(name.publisher(), &signature.key) {
+        Some(trust::KeyStatus::Retired(at)) => Some(at.to_string()),
+        _ => None,
+    };
+    if json {
+        let doc = serde_json::json!({
+            "name": name.to_string(),
+            "version": version.to_string(),
+            "dir": dest.display().to_string(),
+            "registry": url,
+            "verified": {
+                "root": root.header.version,
+                "timestamp": timestamp.header.version,
+                "snapshot": snapshot.header.version,
+                "namespaces": namespaces.header.version,
+            },
+            "signed_by": signature.key.to_string(),
+            "key_retired_since": retired,
+            "requests": verified.requests,
+        });
+        println!("{doc:#}");
+        return Ok(());
+    }
+    let status = match retired {
+        Some(at) => format!(
             "a key of {}/ retired since {at}, published before then",
             name.publisher()
         ),
-        _ => format!("an active key of {}/", name.publisher()),
+        None => format!("an active key of {}/", name.publisher()),
     };
     println!("Fetched {name}@{version} into {}", dest.display());
     println!(

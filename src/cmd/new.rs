@@ -98,7 +98,13 @@ const NOT_YET: &[(&str, &str, &str)] = &[
 
 const KINDS: &str = "service, library (and later: utility, app, driver)";
 
-pub fn run(platform: &Platform, kind: &str, name: &str, dir: Option<&Path>) -> Result<PathBuf> {
+pub fn run(
+    platform: &Platform,
+    kind: &str,
+    name: &str,
+    dir: Option<&Path>,
+    publisher: Option<&str>,
+) -> Result<PathBuf> {
     let kind = match kind {
         "service" => ProjectKind::Service,
         "library" => ProjectKind::Library,
@@ -126,6 +132,9 @@ pub fn run(platform: &Platform, kind: &str, name: &str, dir: Option<&Path>) -> R
     };
 
     check_name(platform, name)?;
+    if let Some(p) = publisher {
+        check_publisher(kind, p)?;
+    }
 
     let root = dir.map(Path::to_path_buf).unwrap_or_else(|| PathBuf::from(name));
     if root.exists() && std::fs::read_dir(&root).map(|mut d| d.next().is_some()).unwrap_or(true) {
@@ -162,9 +171,41 @@ pub fn run(platform: &Platform, kind: &str, name: &str, dir: Option<&Path>) -> R
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| Diagnostic::io("create the project", parent, &e))?;
         }
-        std::fs::write(&path, fill(f.body)).map_err(|e| Diagnostic::io("create the project", &path, &e))?;
+        let mut body = fill(f.body);
+        if let Some(p) = publisher.filter(|_| f.path == "godspeed.toml") {
+            body = body.replace(PUBLISHER_PLACEHOLDER, &format!("publisher = \"{p}\""));
+        }
+        std::fs::write(&path, body).map_err(|e| Diagnostic::io("create the project", &path, &e))?;
     }
     Ok(root)
+}
+
+/// The service template's commented-out publisher line, which `--publisher` fills in.
+const PUBLISHER_PLACEHOLDER: &str = "# publisher = \"your-name\"";
+
+/// A publisher is the first part of a package name, under the same rules; only a service is packaged.
+fn check_publisher(kind: ProjectKind, publisher: &str) -> Result<()> {
+    if kind == ProjectKind::Library {
+        return Err(Diagnostic::new(
+            Kind::InvalidProject,
+            Stage::Validation,
+            "create a library with a publisher",
+            "A library is not packaged or published on its own, so it has no publisher.",
+        )
+        .next("Leave out --publisher.")
+        .into());
+    }
+    if godspeed_package::PackageName::is_valid_part(publisher) {
+        return Ok(());
+    }
+    Err(Diagnostic::new(
+        Kind::InvalidProject,
+        Stage::Validation,
+        format!("use the publisher \"{publisher}\""),
+        "A publisher is the first part of a package name (alice in alice/hello), and this is not one.",
+    )
+    .expected("at most 64 lowercase letters, digits and hyphens, starting with a letter")
+    .into())
 }
 
 /// The name must be one the OS contract schema accepts, checked against the schema's own pattern.

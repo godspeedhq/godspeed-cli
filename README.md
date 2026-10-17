@@ -122,7 +122,7 @@ where the OS tracks it, and what to make instead (exit 20) - never a template th
     godspeed build                 # x86_64
     godspeed build --arch riscv64  # aarch64, armv7, riscv64
     godspeed build --all
-    godspeed package               # needs publisher = "<you>" in godspeed.toml
+    godspeed package               # needs publisher = "<you>" in godspeed.toml (or `new --publisher <you>`)
     godspeed verify target/package/<you>-hello-0.1.0
     godspeed publish --dry-run     # everything but the upload: signs, checks your namespace and the version
 
@@ -263,10 +263,11 @@ Scripts and CI can tell failures apart without reading the text:
 | 29 | cancelled: you declined, or there was no terminal to ask and `--yes` was not given; nothing was changed |
 | 30 | a local file could not be read or written |
 
-`doctor`, `verify` and `whoami` take `--json`: the result is one JSON document on stdout, and a refusal is
-one on stderr - `{"errors": [{"kind", "exit_code", "stage", "headline", "reason", "expected", "next"}]}` -
-with the same exit code. `kind` is a stable name for the code, such as `not-found` for 28. Diagnostics are
-in colour on a terminal; `NO_COLOR` turns that off.
+`doctor`, `verify`, `package`, `fetch` and `whoami` take `--json`: the result is one JSON document on
+stdout, and a refusal is one on stderr -
+`{"errors": [{"kind", "exit_code", "stage", "headline", "reason", "expected", "next"}]}` - with the same
+exit code. `kind` is a stable name for the code, such as `not-found` for 28. Diagnostics are in colour on a
+terminal; `NO_COLOR` turns that off.
 
 ## Development
 

@@ -100,6 +100,41 @@ fn new_service_creates_a_project_that_checks_clean() {
 }
 
 #[test]
+fn new_with_a_publisher_fills_it_in_and_still_checks_clean() {
+    let dir = scratch("new_publisher");
+    let os = fixture_os();
+    let o = godspeed(&dir, Some(&os), &["new", "service", "hello", "--publisher", "alice"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    let p = dir.join("hello");
+    let manifest = std::fs::read_to_string(p.join("godspeed.toml")).unwrap();
+    assert!(manifest.lines().any(|l| l == "publisher = \"alice\""), "{manifest}");
+    assert!(!manifest.contains("your-name"), "{manifest}");
+    let o = godspeed(&p, Some(&os), &["check"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+}
+
+#[test]
+fn new_refuses_a_bad_publisher_or_one_for_a_library_and_writes_nothing() {
+    let dir = scratch("new_bad_publisher");
+    let os = fixture_os();
+    for (args, says) in [
+        (
+            &["new", "service", "hello", "--publisher", "Alice"][..],
+            "first part of a package name",
+        ),
+        (
+            &["new", "library", "parser", "--publisher", "alice"],
+            "has no publisher",
+        ),
+    ] {
+        let o = godspeed(&dir, Some(&os), args);
+        assert_eq!(code(&o), 10, "{}", stderr(&o));
+        assert!(stderr(&o).contains(says), "{}", stderr(&o));
+    }
+    assert!(!dir.join("hello").exists() && !dir.join("parser").exists());
+}
+
+#[test]
 fn new_library_creates_a_project_that_checks_clean() {
     let dir = scratch("new_library");
     let os = fixture_os();
@@ -763,14 +798,9 @@ fn generated_library_tests_pass_and_it_builds_for_every_architecture() {
 fn generated_service_packages_and_the_package_verifies() {
     let os = PathBuf::from(std::env::var("GODSPEED_OS").expect("set GODSPEED_OS to a GodspeedOS checkout"));
     let dir = scratch("e2e_package");
-    assert_eq!(code(&godspeed(&dir, Some(&os), &["new", "service", "hello"])), 0);
+    let o = godspeed(&dir, Some(&os), &["new", "service", "hello", "--publisher", "alice"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
     let p = dir.join("hello");
-    let manifest = std::fs::read_to_string(p.join("godspeed.toml")).unwrap();
-    std::fs::write(
-        p.join("godspeed.toml"),
-        manifest.replace("# publisher = \"your-name\"", "publisher = \"alice\""),
-    )
-    .unwrap();
 
     let o = godspeed(&p, Some(&os), &["package"]);
     assert_eq!(code(&o), 0, "{}", stderr(&o));
@@ -1139,14 +1169,9 @@ fn publish_reconciles_an_unanswered_finalise_and_a_dry_run_uploads_nothing() {
     use std::sync::{Arc, Mutex};
     let os = PathBuf::from(std::env::var("GODSPEED_OS").expect("set GODSPEED_OS to a GodspeedOS checkout"));
     let dir = scratch("e2e_publish");
-    assert_eq!(code(&godspeed(&dir, Some(&os), &["new", "service", "hello"])), 0);
+    let o = godspeed(&dir, Some(&os), &["new", "service", "hello", "--publisher", "alice"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
     let p = dir.join("hello");
-    let manifest = std::fs::read_to_string(p.join("godspeed.toml")).unwrap();
-    std::fs::write(
-        p.join("godspeed.toml"),
-        manifest.replace("# publisher = \"your-name\"", "publisher = \"alice\""),
-    )
-    .unwrap();
     assert_eq!(code(&godspeed(&p, None, &["key", "generate"])), 0);
 
     let state = Arc::new(Mutex::new(FakeRegistry::default()));

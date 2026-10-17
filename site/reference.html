@@ -41,7 +41,7 @@
   <h3>Making and building</h3>
   <div class="table-scroll"><table>
     <tr><th>Command</th><th>What it does</th></tr>
-    <tr><td><code>new service &lt;name&gt;</code><br><code>new library &lt;name&gt;</code></td><td>Create the smallest valid project of that kind, against the OS release you build with. <code>--dir</code> puts it elsewhere. <code>utility</code>, <code>app</code> and <code>driver</code> are refused, with the reason: GodspeedOS cannot run those kinds yet.</td></tr>
+    <tr><td><code>new service &lt;name&gt;</code><br><code>new library &lt;name&gt;</code></td><td>Create the smallest valid project of that kind, against the OS release you build with. <code>--dir</code> puts it elsewhere; <code>--publisher &lt;you&gt;</code> fills in a service's <code>publisher</code>, so it can be packaged straight away. <code>utility</code>, <code>app</code> and <code>driver</code> are refused, with the reason: GodspeedOS cannot run those kinds yet.</td></tr>
     <tr><td><code>check</code></td><td>Validate the project, its toolchain pin, its stdlib release, and its contract against the OS's schema - without building.</td></tr>
     <tr><td><code>build [--arch &lt;isa&gt; | --all]</code></td><td>Build for one architecture (default <code>x86_64</code>; also <code>aarch64</code>, <code>armv7</code>, <code>riscv64</code>) or every one the OS supports. A service gives one ELF per architecture; a library, an rlib.</td></tr>
     <tr><td><code>test</code></td><td>Run a library's tests on your workstation. Refused for a service, which cannot run off a Godspeed machine.</td></tr>
@@ -64,10 +64,10 @@
   <h3>Packaging and verifying</h3>
   <div class="table-scroll"><table>
     <tr><th>Command</th><th>What it does</th></tr>
-    <tr><td><code>package [--arch &lt;isa&gt;] [--out &lt;dir&gt;]</code></td><td>Build every architecture and write a package directory (default <code>target/package/&lt;publisher&gt;-&lt;name&gt;-&lt;version&gt;</code>), then verify it from disk before reporting it. Needs <code>publisher</code> in <code>godspeed.toml</code>.</td></tr>
+    <tr><td><code>package [--arch &lt;isa&gt;] [--out &lt;dir&gt;] [--json]</code></td><td>Build every architecture and write a package directory (default <code>target/package/&lt;publisher&gt;-&lt;name&gt;-&lt;version&gt;</code>), then verify it from disk before reporting it. Needs <code>publisher</code> in <code>godspeed.toml</code>.</td></tr>
     <tr><td><code>verify &lt;dir&gt; [--json]</code></td><td>Check every file of a package directory against its manifest, and its signature if it has one. Needs no OS checkout and no registry.</td></tr>
     <tr><td><code>sign &lt;dir&gt;</code></td><td>Sign a package directory with your key (writes <code>manifest.sig</code>) and verify the result. <code>publish</code> does this for you.</td></tr>
-    <tr><td><code>fetch &lt;publisher/name&gt;[@version] [--out &lt;dir&gt;] [--trust-root sha256:...]</code></td><td>Download a release (default: the highest version) and verify it through the registry's whole chain of trust before keeping it. The official registry's root is built in; <code>--trust-root</code> pins another's.</td></tr>
+    <tr><td><code>fetch &lt;publisher/name&gt;[@version] [--out &lt;dir&gt;] [--trust-root sha256:...] [--json]</code></td><td>Download a release (default: the highest version) and verify it through the registry's whole chain of trust before keeping it. The official registry's root is built in; <code>--trust-root</code> pins another's.</td></tr>
   </table></div>
 
   <h3>Publishing</h3>
@@ -134,7 +134,7 @@ x86_64.elf  aarch64.elf  armv7.elf  riscv64.elf</pre>
 
   <h2 id="exit-codes">Exit codes</h2>
   <p>Scripts and CI can tell failures apart without reading the text.</p>
-  <p><code>doctor</code>, <code>verify</code> and <code>whoami</code> take <code>--json</code>: the result is
+  <p><code>doctor</code>, <code>verify</code>, <code>package</code>, <code>fetch</code> and <code>whoami</code> take <code>--json</code>: the result is
   one JSON document on stdout, and a refusal is one on stderr -
   <code>{"errors": [{"kind", "exit_code", "stage", "headline", "reason", "expected", "next"}]}</code> - with
   the same exit code. <code>kind</code> is a stable name for the code, such as <code>not-found</code> for
