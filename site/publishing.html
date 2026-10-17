@@ -40,10 +40,10 @@
 
   <div class="note">
     <p><strong>The official registry is live</strong> at
-    <code>https://godspeed-registry.bankole-422.workers.dev</code>. That address is temporary - it moves to a
-    custom domain - so the CLI has no built-in default yet: pass <code>--registry</code>, set
-    <code>GODSPEED_REGISTRY</code>, or name it once with <code>godspeed login</code>. Publishers are approved
-    by hand for now, by the registry's maintainer.</p>
+    <code>https://godspeed-registry.bankole-422.workers.dev</code>, and it is the CLI's default, with its root
+    of trust built in. (The address is temporary: it moves to a custom domain, and the default moves with a
+    CLI release.) <code>--registry</code>, <code>GODSPEED_REGISTRY</code> or <code>godspeed login</code>
+    choose another. Publishers are approved by hand for now, by the registry's maintainer.</p>
   </div>
 
   <h2 id="once">Once: your key and your token</h2>
@@ -64,7 +64,7 @@
     </li>
     <li>
       <h3>Make your token</h3>
-<pre><span class="p">$ </span>godspeed login --registry https://godspeed-registry.bankole-422.workers.dev
+<pre><span class="p">$ </span>godspeed login
 <span class="o">Made a publisher token for https://godspeed-registry.bankole-422.workers.dev, stored in
 ~/.config/godspeed/credentials.toml (readable by you alone).
 Its fingerprint:
@@ -120,7 +120,7 @@ Published alice/hello@0.1.0</span></pre>
 
   <h2 id="ci">Publishing from CI</h2>
   <p>CI gets its own token, printed once and stored nowhere:</p>
-<pre><span class="p">$ </span>godspeed token new --registry https://godspeed-registry.bankole-422.workers.dev
+<pre><span class="p">$ </span>godspeed token new
 <span class="o">gsp_...
 Fingerprint: sha256:...
 The token above is shown once and saved nowhere. Put it in your CI's secrets as GODSPEED_TOKEN, and
@@ -138,9 +138,9 @@ steps:
   <h2 id="verify">Verifying anyone's package</h2>
   <p>Downloading needs no account. <code>fetch</code> checks a release the way a Godspeed machine will before
   installing it, and keeps nothing it could not verify:</p>
-<pre><span class="p">$ </span>godspeed fetch godspeed/hello --registry https://godspeed-registry.bankole-422.workers.dev \
-    --trust-root sha256:d769d1a64c3105c8da0ffcc2f54aba1c3a16ce4ae707a6d206556f08824a146d
+<pre><span class="p">$ </span>godspeed fetch godspeed/hello
 <span class="o">Checking https://godspeed-registry.bankole-422.workers.dev's trust metadata...
+First contact with the official registry: its root 1 matches the one built into this CLI.
 Downloading contract.toml...
 Downloading x86_64.elf...
 ...
@@ -148,10 +148,12 @@ Fetched godspeed/hello@0.1.0 into ./godspeed-hello-0.1.0
   verified: root 1 -> timestamp 2 -> snapshot 2 -> namespaces 1 -> index -> manifest -> files
   signed by ed25519:b79a6e80... (an active key of godspeed/)
   requests: log_write</span></pre>
-  <p><code>--trust-root</code> pins the registry's root of trust the first time this machine talks to it; the
-  digest above is the official registry's. Without it, the CLI trusts the root it is given on first contact
-  and prints its digest for you to compare. After that, a new root is accepted only if the old one signed
-  it.</p>
+  <p>The official registry's root of trust is built into the CLI: the first time this machine talks to it,
+  its root is accepted only if its digest is
+  <code>sha256:d769d1a64c3105c8da0ffcc2f54aba1c3a16ce4ae707a6d206556f08824a146d</code>. For any other
+  registry, <code>--trust-root</code> pins its root the same way; without it, the CLI trusts the root it is
+  given on first contact and prints its digest for you to compare. After that, a new root is accepted only if
+  the old one signed it.</p>
   <p>A package directory - downloaded any way you like - can also be checked with no registry at all:</p>
 <pre><span class="p">$ </span>godspeed verify ./godspeed-hello-0.1.0</pre>
 

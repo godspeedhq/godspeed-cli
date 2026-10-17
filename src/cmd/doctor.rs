@@ -19,7 +19,7 @@ struct Line {
     fix: Option<String>,
 }
 
-pub fn run(os_flag: Option<&Path>) -> Result<(), Diagnostic> {
+pub fn run(os_flag: Option<&Path>, json: bool) -> Result<(), Diagnostic> {
     let mut lines = Vec::new();
     let mut required_failed = false;
 
@@ -113,14 +113,31 @@ pub fn run(os_flag: Option<&Path>) -> Result<(), Diagnostic> {
         }
     }
 
-    for l in &lines {
+    if json {
+        let checks: Vec<_> = lines
+            .iter()
+            .map(|l| {
+                serde_json::json!({
+                    "name": l.what,
+                    "status": status(l),
+                    "required": !l.optional,
+                    "detail": l.detail,
+                    "fix": l.fix,
+                })
+            })
+            .collect();
+        println!(
+            "{:#}",
+            serde_json::json!({ "ready": !required_failed, "checks": checks })
+        );
+    }
+    for l in lines.iter().filter(|_| !json) {
         println!(
             "{:<26} {:<8} {}",
             l.what,
-            match (l.ok, l.optional) {
-                (true, _) => "ok",
-                (false, true) => "absent",
-                (false, false) => "MISSING",
+            match status(l) {
+                "missing" => "MISSING",
+                s => s,
             },
             l.detail
         );
@@ -130,8 +147,10 @@ pub fn run(os_flag: Option<&Path>) -> Result<(), Diagnostic> {
             }
         }
     }
-    println!();
-    println!("QEMU is only needed by `godspeed run`, which GodspeedOS cannot support yet.");
+    if !json {
+        println!();
+        println!("QEMU is only needed by `godspeed run`, which GodspeedOS cannot support yet.");
+    }
 
     if required_failed {
         Err(Diagnostic::new(
@@ -142,8 +161,19 @@ pub fn run(os_flag: Option<&Path>) -> Result<(), Diagnostic> {
         )
         .next("Apply each `fix:` line, then run `godspeed doctor` again."))
     } else {
-        println!("Ready to build.");
+        if !json {
+            println!("Ready to build.");
+        }
         Ok(())
+    }
+}
+
+/// "ok", "absent" (optional and not there) or "missing" (required and not there).
+fn status(l: &Line) -> &'static str {
+    match (l.ok, l.optional) {
+        (true, _) => "ok",
+        (false, true) => "absent",
+        (false, false) => "missing",
     }
 }
 

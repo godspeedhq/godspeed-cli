@@ -114,6 +114,33 @@ impl Kind {
             Kind::Io => 30,
         }
     }
+
+    /// The kind's name in JSON output. Part of the same contract as the exit codes.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Kind::InvalidProject => "invalid-project",
+            Kind::Environment => "environment",
+            Kind::UnavailableTarget => "unavailable-target",
+            Kind::MissingDependency => "missing-dependency",
+            Kind::CompilationFailure => "compilation-failure",
+            Kind::TestFailure => "test-failure",
+            Kind::InvalidPackage => "invalid-package",
+            Kind::IntegrityFailure => "integrity-failure",
+            Kind::SignatureFailure => "signature-failure",
+            Kind::Untrusted => "untrusted",
+            Kind::NotFound => "not-found",
+            Kind::AuthenticationFailure => "authentication-failure",
+            Kind::RegistryUnavailable => "registry-unavailable",
+            Kind::PermissionDenied => "permission-denied",
+            Kind::Conflict => "conflict",
+            Kind::OutcomeUnknown => "outcome-unknown",
+            Kind::Cancelled => "cancelled",
+            Kind::NotProvidedByOs => "not-provided-by-os",
+            Kind::NotImplemented => "not-implemented",
+            Kind::WrongProgram => "wrong-program",
+            Kind::Io => "io",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -151,6 +178,39 @@ impl Diagnostic {
 
     pub fn io(headline: impl Into<String>, path: &std::path::Path, err: &std::io::Error) -> Self {
         Diagnostic::new(Kind::Io, Stage::Setup, headline, format!("{}: {}", path.display(), err))
+    }
+
+    /// For `--json`: every field, unwrapped, with the kind's name and exit code.
+    pub fn to_json(&self) -> serde_json::Value {
+        serde_json::json!({
+            "kind": self.kind.as_str(),
+            "exit_code": self.kind.exit_code(),
+            "stage": self.stage.as_str(),
+            "headline": format!("Cannot {}", self.headline),
+            "reason": self.reason,
+            "expected": self.expected,
+            "next": self.next,
+        })
+    }
+
+    /// The same text as `Display`, with the headline in bold red and each label in bold, for a terminal.
+    pub fn styled(&self) -> String {
+        let headline = anstyle::Style::new()
+            .bold()
+            .fg_color(Some(anstyle::AnsiColor::Red.into()));
+        let label = anstyle::Style::new().bold();
+        let mut out = String::new();
+        for (i, line) in self.to_string().lines().enumerate() {
+            if i == 0 {
+                out.push_str(&format!("{headline}{line}{headline:#}\n"));
+            } else if let Some((name, rest)) = line.split_once(':').filter(|_| !line.starts_with(' ')) {
+                out.push_str(&format!("{label}{name}:{label:#}{rest}\n"));
+            } else {
+                out.push_str(line);
+                out.push('\n');
+            }
+        }
+        out
     }
 }
 
@@ -227,6 +287,33 @@ mod tests {
     }
 
     #[test]
+    fn styling_changes_only_the_look() {
+        let d = Diagnostic::new(Kind::Io, Stage::Setup, "x", "a: b").next("c");
+        let styled = d.styled();
+        assert!(styled.contains('\u{1b}'));
+        let mut plain = String::new();
+        let mut chars = styled.chars();
+        while let Some(c) = chars.next() {
+            if c == '\u{1b}' {
+                chars.by_ref().find(|&c| c == 'm');
+            } else {
+                plain.push(c);
+            }
+        }
+        assert_eq!(plain, d.to_string());
+    }
+
+    #[test]
+    fn json_carries_every_field() {
+        let d = Diagnostic::new(Kind::NotFound, Stage::Verification, "fetch a/b", "No such package.");
+        let j = d.to_json();
+        assert_eq!(j["kind"], "not-found");
+        assert_eq!(j["exit_code"], 28);
+        assert_eq!(j["headline"], "Cannot fetch a/b");
+        assert!(j["next"].is_null());
+    }
+
+    #[test]
     fn long_lines_wrap_on_words() {
         let reason = "word ".repeat(40);
         let d = Diagnostic::new(Kind::Io, Stage::Setup, "x", reason.trim());
@@ -265,6 +352,10 @@ mod tests {
         codes.sort();
         codes.dedup();
         assert_eq!(codes.len(), kinds.len());
+        let mut names: Vec<&str> = kinds.iter().map(|k| k.as_str()).collect();
+        names.sort();
+        names.dedup();
+        assert_eq!(names.len(), kinds.len());
         assert!(!codes.contains(&0) && !codes.contains(&1) && !codes.contains(&2));
     }
 }

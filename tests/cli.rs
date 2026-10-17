@@ -229,13 +229,27 @@ fn run_and_service_test_say_the_os_cannot_do_it_yet() {
 }
 
 #[test]
-fn account_commands_need_a_registry_and_say_how_to_name_one() {
+fn with_no_registry_named_the_official_one_is_used() {
+    const OFFICIAL: &str = "https://godspeed-registry.bankole-422.workers.dev";
     let dir = scratch("no_registry");
-    for verb in ["login", "logout", "whoami"] {
+    // Without a token, neither needs the network to refuse: they say which registry they meant.
+    for verb in ["logout", "whoami"] {
         let o = godspeed(&dir, None, &[verb]);
-        assert_eq!(code(&o), 11, "{verb}: {}", stderr(&o));
-        assert!(stderr(&o).contains("--registry <url>"), "{verb}: {}", stderr(&o));
+        assert_eq!(code(&o), 18, "{verb}: {}", stderr(&o));
+        assert!(
+            stderr(&o).contains(&format!("not logged in to {OFFICIAL}")),
+            "{verb}: {}",
+            stderr(&o)
+        );
     }
+    // Making a token needs no network either.
+    let o = godspeed(&dir, None, &["login"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    assert!(
+        stdout(&o).contains(&format!("Made a publisher token for {OFFICIAL}")),
+        "{}",
+        stdout(&o)
+    );
 }
 
 #[test]
@@ -1008,4 +1022,173 @@ fn self_uninstall_removes_what_the_installer_added_and_keeps_the_keys() {
     if cfg!(unix) {
         assert_eq!(std::fs::read_to_string(&profile).unwrap(), "export A=1\n");
     }
+}
+
+// ---- publishing against a stand-in registry ---------------------------------------------------------
+
+/// What the stand-in registry's index says about alice/hello@0.1.0.
+#[derive(Clone, Copy, PartialEq)]
+enum IndexShows {
+    Nothing,
+    /// The manifest the CLI reserved with: the publish went through.
+    Ours,
+    /// Another manifest.
+    Another,
+}
+
+#[derive(Default)]
+struct FakeRegistry {
+    index: Option<IndexShows>,
+    /// The manifest the CLI last reserved with.
+    manifest: Vec<u8>,
+    /// Every request but the index: what the CLI asked the registry to do.
+    calls: Vec<String>,
+    /// Answer finalisation by closing the connection: the outcome nobody knows.
+    drop_finalise: bool,
+}
+
+/// Enough of the registry protocol for `publish`, on this machine. Returns its address.
+fn fake_registry(state: std::sync::Arc<std::sync::Mutex<FakeRegistry>>) -> String {
+    use std::io::{BufRead, BufReader, Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut request = String::new();
+            let _ = reader.read_line(&mut request);
+            let mut length = 0usize;
+            loop {
+                let mut header = String::new();
+                if reader.read_line(&mut header).unwrap_or(0) <= 2 {
+                    break;
+                }
+                if let Some((k, v)) = header.split_once(':') {
+                    if k.eq_ignore_ascii_case("content-length") {
+                        length = v.trim().parse().unwrap_or(0);
+                    }
+                }
+            }
+            let mut body = vec![0u8; length];
+            let _ = reader.read_exact(&mut body);
+            let mut parts = request.split_whitespace();
+            let (method, path) = (parts.next().unwrap_or(""), parts.next().unwrap_or(""));
+            let mut s = state.lock().unwrap();
+            if path != "/index/alice/hello.toml" {
+                s.calls.push(format!("{method} {path}"));
+            }
+            let reservation = r#"{"upload":"u1","expires":"2099-01-01T00:00:00Z","files":["contract.toml","x86_64.elf","aarch64.elf","armv7.elf","riscv64.elf","manifest.sig"],"staged":[]}"#;
+            let (status, json) = match (method, path) {
+                ("GET", "/v1/whoami") => (
+                    "200 OK",
+                    r#"{"account":"alice","publishers":["alice"],"token_expires":"2099-01-01T00:00:00Z"}"#.to_string(),
+                ),
+                ("POST", "/v1/packages/alice/hello/reservations") => {
+                    s.manifest = body;
+                    ("200 OK", reservation.to_string())
+                }
+                ("PUT", p) if p.starts_with("/v1/packages/alice/hello/0.1.0/uploads/u1/") => {
+                    ("200 OK", reservation.to_string())
+                }
+                ("POST", "/v1/packages/alice/hello/0.1.0/uploads/u1/finalise") if s.drop_finalise => {
+                    // No answer at all: the connection closes. Whether it published, nobody here says.
+                    continue;
+                }
+                ("GET", "/index/alice/hello.toml") => match s.index {
+                    None | Some(IndexShows::Nothing) => ("404 Not Found", String::new()),
+                    Some(shows) => {
+                        let digest = if shows == IndexShows::Ours {
+                            sha256_hex(&s.manifest)
+                        } else {
+                            "0".repeat(64)
+                        };
+                        let index = format!(
+                            "format = {}\nname = \"alice/hello\"\n\n[[release]]\nversion = \"0.1.0\"\n\
+                             manifest = \"sha256:{digest}\"\npublished = \"2026-10-16T12:00:00Z\"\n\
+                             published_by = \"alice\"\n",
+                            godspeed_package::INDEX_FORMAT
+                        );
+                        ("200 OK", index)
+                    }
+                },
+                _ => (
+                    "404 Not Found",
+                    r#"{"error":"not-found","message":"no such route"}"#.to_string(),
+                ),
+            };
+            drop(s);
+            let _ = stream.write_all(
+                format!(
+                    "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{json}",
+                    json.len()
+                )
+                .as_bytes(),
+            );
+        }
+    });
+    url
+}
+
+/// The unknown-outcome path end to end, and `--dry-run`, with a real build against a stand-in registry:
+/// finalisation that gets no answer is reconciled from the index - published if the index shows this
+/// manifest, "outcome unknown" (25) if it shows nothing - and a dry run asks the registry to do nothing.
+#[test]
+#[ignore = "needs GODSPEED_OS, the pinned toolchain and network access"]
+fn publish_reconciles_an_unanswered_finalise_and_a_dry_run_uploads_nothing() {
+    use std::sync::{Arc, Mutex};
+    let os = PathBuf::from(std::env::var("GODSPEED_OS").expect("set GODSPEED_OS to a GodspeedOS checkout"));
+    let dir = scratch("e2e_publish");
+    assert_eq!(code(&godspeed(&dir, Some(&os), &["new", "service", "hello"])), 0);
+    let p = dir.join("hello");
+    let manifest = std::fs::read_to_string(p.join("godspeed.toml")).unwrap();
+    std::fs::write(
+        p.join("godspeed.toml"),
+        manifest.replace("# publisher = \"your-name\"", "publisher = \"alice\""),
+    )
+    .unwrap();
+    assert_eq!(code(&godspeed(&p, None, &["key", "generate"])), 0);
+
+    let state = Arc::new(Mutex::new(FakeRegistry::default()));
+    let url = fake_registry(state.clone());
+    let publish = |extra: &[&str]| {
+        let mut args = vec!["publish", "--registry", url.as_str()];
+        args.extend_from_slice(extra);
+        command(&p, Some(&os), &args)
+            .env("GODSPEED_TOKEN", "gsp_test")
+            .output()
+            .unwrap()
+    };
+    let calls = |s: &Arc<Mutex<FakeRegistry>>| std::mem::take(&mut s.lock().unwrap().calls);
+
+    // A dry run: authenticated and checked, nothing reserved or uploaded.
+    let o = publish(&["--dry-run"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    assert!(stdout(&o).contains("Would publish alice/hello@0.1.0"), "{}", stdout(&o));
+    assert_eq!(calls(&state), ["GET /v1/whoami"]);
+
+    // A dry run that would collide with a different published 0.1.0.
+    state.lock().unwrap().index = Some(IndexShows::Another);
+    let o = publish(&["--dry-run"]);
+    assert_eq!(code(&o), 24, "{}", stderr(&o));
+    assert_eq!(calls(&state), ["GET /v1/whoami"]);
+
+    // Finalisation unanswered, and the index does not show it: nobody knows yet, and the CLI says so.
+    {
+        let mut s = state.lock().unwrap();
+        s.index = Some(IndexShows::Nothing);
+        s.drop_finalise = true;
+    }
+    let o = publish(&[]);
+    assert_eq!(code(&o), 25, "{}", stderr(&o));
+    assert!(stderr(&o).contains("did not answer finalisation"), "{}", stderr(&o));
+    assert!(stderr(&o).contains("It may still complete"), "{}", stderr(&o));
+    assert!(calls(&state).iter().any(|c| c.ends_with("/finalise")));
+
+    // Finalisation unanswered, but it went through: the index shows this manifest, so it is published.
+    state.lock().unwrap().index = Some(IndexShows::Ours);
+    let o = publish(&[]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    assert!(stderr(&o).contains("did not answer finalisation"), "{}", stderr(&o));
+    assert!(stdout(&o).contains("Published alice/hello@0.1.0"), "{}", stdout(&o));
 }

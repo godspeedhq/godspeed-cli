@@ -6,6 +6,9 @@
 //! what it finds (CLAUDE.md, "A timed-out publication is not a failure"). Running `publish` again is always
 //! safe: a reservation for the same manifest resumes, uploaded files are skipped, and a version already
 //! published with this exact manifest is reported as published.
+//!
+//! `--dry-run` does everything up to the first step that changes the registry - package, sign, authenticate,
+//! check the namespace, look the version up in the public index - and says what `publish` would do.
 
 use super::{build, package};
 use crate::diag::{Diagnostic, Kind, Result, Stage};
@@ -59,7 +62,7 @@ fn snapshot_pending(name: &str) {
     println!("{name} until it does - at its next refresh, within six hours. Nothing needs redoing.");
 }
 
-pub fn run(platform: &Platform, project: &Project, registry_flag: Option<&str>) -> Result<()> {
+pub fn run(platform: &Platform, project: &Project, registry_flag: Option<&str>, dry_run: bool) -> Result<()> {
     // Who and where, before spending time building: an unconfigured registry or a missing token is known now.
     let creds = Credentials::load()?;
     let url = registry::resolve(registry_flag, &creds)?;
@@ -106,6 +109,9 @@ pub fn run(platform: &Platform, project: &Project, registry_flag: Option<&str>) 
         ))
         .next("Change the publisher, or ask the registry maintainer to add your account to that namespace.")
         .into());
+    }
+    if dry_run {
+        return would_publish(&client, &url, &doing, &name, version, &ours, &dir);
     }
 
     eprintln!("Reserving {name}@{version}...");
@@ -162,6 +168,42 @@ pub fn run(platform: &Platform, project: &Project, registry_flag: Option<&str>) 
         .into()),
         Answer::Refused(r) => Err(registry::refused(&doing, &url, &r).into()),
         Answer::Unknown(why) => reconcile(&client, &doing, &name, version, &ours, &why, &dir),
+    }
+}
+
+/// `--dry-run`, once authenticated and allowed: what the public index says `publish` would meet.
+fn would_publish(
+    client: &Client,
+    url: &str,
+    doing: &str,
+    name: &str,
+    version: Version,
+    ours: &Sha256Digest,
+    dir: &Path,
+) -> Result<()> {
+    eprintln!("Looking up {name}@{version} in the registry's index...");
+    match look_up(client, name, version, ours) {
+        Answer::Done(Found::Absent) => {
+            println!("Would publish {name}@{version} to {url}.");
+            println!("  package: {} (signed, verified)", dir.display());
+            println!("Nothing was uploaded. Run `godspeed publish` to publish it.");
+            Ok(())
+        }
+        Answer::Done(Found::Ours(when)) => {
+            println!("{name}@{version} is already published, with this exact manifest ({when}).");
+            println!("Nothing was uploaded; `godspeed publish` would report it as published.");
+            Ok(())
+        }
+        Answer::Done(Found::Different(digest)) => Err(Diagnostic::new(
+            Kind::Conflict,
+            Stage::Validation,
+            doing.to_string(),
+            format!("{name}@{version} is already published, with a different manifest ({digest})."),
+        )
+        .next("Increment the package version. Nothing was uploaded.")
+        .into()),
+        Answer::Refused(r) => Err(registry::refused(doing, url, &r).into()),
+        Answer::Unknown(why) => Err(registry::unreachable(doing, Stage::Validation, &why).into()),
     }
 }
 

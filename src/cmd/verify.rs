@@ -229,6 +229,34 @@ pub fn run(dir: &Path) -> Result<Verified> {
 }
 
 /// Print what a verified package is.
+/// `verify --json`: what `report` says, as data.
+pub fn to_json(v: &Verified) -> serde_json::Value {
+    let m = v.manifest.manifest();
+    let artifacts: Vec<_> = m
+        .artifacts
+        .iter()
+        .map(|a| {
+            serde_json::json!({
+                "arch": a.arch.as_str(),
+                "file": a.arch.artifact_file(),
+                "size": a.size,
+                "digest": a.digest.to_string(),
+            })
+        })
+        .collect();
+    serde_json::json!({
+        "name": m.name.to_string(),
+        "version": m.version.to_string(),
+        "kind": m.kind.as_str(),
+        "description": m.description,
+        "license": m.license,
+        "os_release": m.os_release.to_string(),
+        "contract": { "file": CONTRACT_FILE, "digest": m.contract.to_string(), "requests": v.requests },
+        "artifacts": artifacts,
+        "signed_by": v.signed_by.as_ref().map(|k| k.to_string()),
+    })
+}
+
 pub fn report(v: &Verified) {
     let m = v.manifest.manifest();
     println!(
