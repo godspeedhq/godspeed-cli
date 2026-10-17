@@ -35,7 +35,7 @@ pub fn run(os_flag: Option<&Path>) -> Result<(), Diagnostic> {
         ok: true,
         optional: true,
         detail: match latest {
-            Ok(Some(l)) if l > current => format!("{current}; {l} is available - run the installer again to update"),
+            Ok(Some(l)) if l > current => format!("{current}; {l} is available - run `godspeed self update`"),
             Ok(_) => format!("{current}; no newer release is published"),
             Err(why) => format!("{current} ({why})"),
         },

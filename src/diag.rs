@@ -76,6 +76,8 @@ pub enum Kind {
     Conflict,
     /// Nobody can tell yet whether the operation happened. Never a failure, never a success.
     OutcomeUnknown,
+    /// The developer declined, or could not be asked to confirm, an operation that needs confirming.
+    Cancelled,
     /// GodspeedOS does not provide what this operation needs yet. Not a bug in the project.
     NotProvidedByOs,
     /// The CLI does not implement this operation yet.
@@ -108,6 +110,7 @@ impl Kind {
             Kind::SignatureFailure => 26,
             Kind::Untrusted => 27,
             Kind::NotFound => 28,
+            Kind::Cancelled => 29,
             Kind::Io => 30,
         }
     }
@@ -251,6 +254,8 @@ mod tests {
             Kind::PermissionDenied,
             Kind::Conflict,
             Kind::OutcomeUnknown,
+            Kind::Cancelled,
+            Kind::NotFound,
             Kind::NotProvidedByOs,
             Kind::NotImplemented,
             Kind::WrongProgram,

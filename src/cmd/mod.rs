@@ -6,6 +6,7 @@ pub mod fetch;
 pub mod new;
 pub mod package;
 pub mod publish;
+pub mod self_manage;
 pub mod sign;
 pub mod test;
 pub mod unavailable;

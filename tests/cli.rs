@@ -790,3 +790,222 @@ fn generated_service_packages_and_the_package_verifies() {
     assert!(!pkg_dir.join("x86_64.elf").exists());
     assert_eq!(code(&verify(&pkg_dir)), 0);
 }
+
+// ---- self update and self uninstall -----------------------------------------------------------------
+
+/// The release build `self update` looks for on this machine.
+fn host_asset() -> String {
+    let target = match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("linux", a) => format!("{a}-unknown-linux-musl"),
+        ("macos", a) => format!("{a}-apple-darwin"),
+        ("windows", a) => format!("{a}-pc-windows-msvc"),
+        (os, a) => format!("{a}-{os}"),
+    };
+    format!("godspeed-{target}{}", std::env::consts::EXE_SUFFIX)
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let d = godspeed_package::Sha256Digest::of(bytes).to_string();
+    d.trim_start_matches("sha256:").to_string()
+}
+
+/// A stand-in for GitHub Releases on this machine: `releases/latest` points at `cli-v<latest>`, whose
+/// downloads are `files`. Returns the address to put in GODSPEED_TEST_RELEASES_URL.
+fn releases_server(latest: &str, files: Vec<(String, Vec<u8>)>) -> String {
+    use std::io::{BufRead, BufReader, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}/releases", listener.local_addr().unwrap());
+    let latest = latest.to_string();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut request = String::new();
+            let _ = reader.read_line(&mut request);
+            loop {
+                let mut header = String::new();
+                if reader.read_line(&mut header).unwrap_or(0) <= 2 {
+                    break;
+                }
+            }
+            let path = request.split_whitespace().nth(1).unwrap_or("").to_string();
+            let (status, extra, body): (&str, String, &[u8]) = if path == "/releases/latest" {
+                let tag = format!("https://github.com/godspeedhq/godspeed-cli/releases/tag/cli-v{latest}");
+                ("302 Found", format!("Location: {tag}\r\n"), b"")
+            } else if let Some((_, b)) = files
+                .iter()
+                .find(|(n, _)| path == format!("/releases/download/cli-v{latest}/{n}"))
+            {
+                ("200 OK", String::new(), b)
+            } else {
+                ("404 Not Found", String::new(), b"")
+            };
+            let head = format!(
+                "HTTP/1.1 {status}\r\n{extra}Content-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            let _ = stream.write_all(head.as_bytes());
+            if !request.starts_with("HEAD") {
+                let _ = stream.write_all(body);
+            }
+        }
+    });
+    url
+}
+
+/// A copy of the CLI installed the way the installer installs it, under a home of its own. Returns the
+/// home and the installed binary.
+fn installed_copy(test: &str) -> (PathBuf, PathBuf) {
+    let home = scratch(test);
+    let bin = home.join(".godspeed").join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let exe = bin.join(format!("godspeed{}", std::env::consts::EXE_SUFFIX));
+    std::fs::copy(env!("CARGO_BIN_EXE_godspeed"), &exe).unwrap();
+    (home, exe)
+}
+
+fn run_installed(home: &Path, exe: &Path, releases: Option<&str>, args: &[&str]) -> Output {
+    let mut c = Command::new(exe);
+    c.current_dir(home)
+        .env("HOME", home)
+        .env("USERPROFILE", home)
+        .env("CARGO_HOME", home.join(".cargo"))
+        .env("GODSPEED_CONFIG_DIR", home.join("config"))
+        .env_remove("GODSPEED_TEST_RELEASES_URL")
+        .stdin(std::process::Stdio::null())
+        .args(args);
+    if let Some(r) = releases {
+        c.env("GODSPEED_TEST_RELEASES_URL", r);
+    }
+    c.output().unwrap()
+}
+
+fn stdout(o: &Output) -> String {
+    String::from_utf8_lossy(&o.stdout).into_owned()
+}
+
+#[test]
+fn self_update_says_unchanged_when_this_is_the_latest() {
+    let (home, exe) = installed_copy("self_update_unchanged");
+    let url = releases_server(env!("CARGO_PKG_VERSION"), vec![]);
+    let o = run_installed(&home, &exe, Some(&url), &["self", "update"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    assert!(stdout(&o).contains(&format!("godspeed unchanged - {}", env!("CARGO_PKG_VERSION"))));
+}
+
+#[test]
+fn self_update_replaces_nothing_when_the_checksum_does_not_match() {
+    let (home, exe) = installed_copy("self_update_mismatch");
+    let before = std::fs::read(&exe).unwrap();
+    let asset = host_asset();
+    let sums = format!("{}  {asset}\n", "0".repeat(64));
+    let url = releases_server(
+        "999.0.0",
+        vec![
+            (asset, b"not godspeed".to_vec()),
+            ("SHA256SUMS".into(), sums.into_bytes()),
+        ],
+    );
+    let o = run_installed(&home, &exe, Some(&url), &["self", "update"]);
+    assert_eq!(code(&o), 17, "{}", stderr(&o));
+    assert!(stderr(&o).contains("is not the file the release lists"));
+    assert_eq!(std::fs::read(&exe).unwrap(), before, "the binary is untouched");
+    assert_eq!(
+        std::fs::read_dir(exe.parent().unwrap()).unwrap().count(),
+        1,
+        "nothing left beside it"
+    );
+}
+
+#[test]
+fn self_update_replaces_nothing_when_the_download_does_not_run() {
+    let (home, exe) = installed_copy("self_update_broken");
+    let before = std::fs::read(&exe).unwrap();
+    let asset = host_asset();
+    let body = b"verified, but not a program".to_vec();
+    let sums = format!("{}  {asset}\n", sha256_hex(&body));
+    let url = releases_server("999.0.0", vec![(asset, body), ("SHA256SUMS".into(), sums.into_bytes())]);
+    let o = run_installed(&home, &exe, Some(&url), &["self", "update"]);
+    assert_eq!(code(&o), 11, "{}", stderr(&o));
+    assert_eq!(std::fs::read(&exe).unwrap(), before, "the binary is untouched");
+    assert_eq!(
+        std::fs::read_dir(exe.parent().unwrap()).unwrap().count(),
+        1,
+        "nothing left beside it"
+    );
+}
+
+/// The whole swap, with a script standing in for the new release (Unix runs one as a program).
+#[cfg(unix)]
+#[test]
+fn self_update_swaps_in_a_verified_release_that_runs() {
+    let (home, exe) = installed_copy("self_update_swaps");
+    let asset = host_asset();
+    let body = b"#!/bin/sh\necho godspeed 999.0.0\n".to_vec();
+    let sums = format!("{}  {asset}\n", sha256_hex(&body));
+    let url = releases_server(
+        "999.0.0",
+        vec![(asset, body.clone()), ("SHA256SUMS".into(), sums.into_bytes())],
+    );
+    let o = run_installed(&home, &exe, Some(&url), &["self", "update"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    assert!(stdout(&o).contains("godspeed updated - 999.0.0 (from"));
+    assert_eq!(std::fs::read(&exe).unwrap(), body);
+    assert_eq!(std::fs::read_dir(exe.parent().unwrap()).unwrap().count(), 1);
+}
+
+#[test]
+fn self_commands_leave_a_cargo_install_to_cargo() {
+    let home = scratch("self_cargo");
+    let bin = home.join(".cargo").join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let exe = bin.join(format!("godspeed{}", std::env::consts::EXE_SUFFIX));
+    std::fs::copy(env!("CARGO_BIN_EXE_godspeed"), &exe).unwrap();
+    for args in [&["self", "update"][..], &["self", "uninstall", "--yes"]] {
+        let o = run_installed(&home, &exe, None, args);
+        assert_eq!(code(&o), 22, "{}", stderr(&o));
+        assert!(stderr(&o).contains("installed by `cargo install`"));
+    }
+    assert!(exe.exists());
+}
+
+#[test]
+fn self_uninstall_asks_first_and_changes_nothing_without_an_answer() {
+    let (home, exe) = installed_copy("self_uninstall_asks");
+    let o = run_installed(&home, &exe, None, &["self", "uninstall"]);
+    assert_eq!(code(&o), 29, "{}", stderr(&o));
+    assert!(stderr(&o).contains("Nothing was changed"));
+    assert!(exe.exists());
+}
+
+#[test]
+fn self_uninstall_removes_what_the_installer_added_and_keeps_the_keys() {
+    let (home, exe) = installed_copy("self_uninstall");
+    let config = home.join("config");
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(config.join("signing-key.toml"), "kept").unwrap();
+    let profile = home.join(".profile");
+    let line = "export PATH=\"$HOME/.godspeed/bin:$PATH\"  # added by the godspeed installer";
+    std::fs::write(&profile, format!("export A=1\n\n{line}\n")).unwrap();
+
+    let o = run_installed(&home, &exe, None, &["self", "uninstall", "--yes"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    assert!(stdout(&o).contains(&format!("keep    {}", config.display())));
+    // Windows deletes the binary from a helper once the command has exited.
+    let gone = (0..60).any(|_| {
+        if home.join(".godspeed").exists() {
+            std::thread::sleep(std::time::Duration::from_millis(250));
+            false
+        } else {
+            true
+        }
+    });
+    assert!(gone, "the binary and the installer's folders are removed");
+    assert_eq!(
+        std::fs::read_to_string(config.join("signing-key.toml")).unwrap(),
+        "kept"
+    );
+    if cfg!(unix) {
+        assert_eq!(std::fs::read_to_string(&profile).unwrap(), "export A=1\n");
+    }
+}
