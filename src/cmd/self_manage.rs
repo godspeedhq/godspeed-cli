@@ -288,6 +288,13 @@ pub fn uninstall(yes: bool) -> Result<(), Diagnostic> {
     if user_path {
         println!("  remove  {} from your user PATH", bin.display());
     }
+    // Only the kits this CLI cached, then the folder if that empties it: never anything else in it.
+    let kits = crate::kit::cache_dir()
+        .map(|c| (c.join("platform"), c))
+        .filter(|(k, _)| k.exists());
+    if let Some((k, _)) = &kits {
+        println!("  remove  {} (cached GodspeedOS platform kits)", k.display());
+    }
     if let Some(config) = crate::registry::config_dir().filter(|c| c.exists()) {
         println!("  keep    {}", config.display());
         println!("          your signing key, tokens and trust records. Delete it yourself if you no longer");
@@ -300,6 +307,10 @@ pub fn uninstall(yes: bool) -> Result<(), Diagnostic> {
     }
     if user_path {
         windows_user_path(&bin, true);
+    }
+    if let Some((k, cache)) = &kits {
+        std::fs::remove_dir_all(k).map_err(|e| Diagnostic::io(doing, k, &e))?;
+        let _ = std::fs::remove_dir(cache);
     }
     if cfg!(windows) {
         // A running program cannot be deleted on Windows: a helper does it once this one has exited.

@@ -41,7 +41,7 @@
   <h3>Making and building</h3>
   <div class="table-scroll"><table>
     <tr><th>Command</th><th>What it does</th></tr>
-    <tr><td><code>new service &lt;name&gt;</code><br><code>new library &lt;name&gt;</code></td><td>Create the smallest valid project of that kind, against the OS release you build with. <code>--dir</code> puts it elsewhere; <code>--publisher &lt;you&gt;</code> fills in a service's <code>publisher</code>, so it can be packaged straight away. <code>utility</code>, <code>app</code> and <code>driver</code> are refused, with the reason: GodspeedOS cannot run those kinds yet.</td></tr>
+    <tr><td><code>new service &lt;name&gt;</code><br><code>new library &lt;name&gt;</code></td><td>Create the smallest valid project of that kind, against the OS release you build with. <code>--os-release &lt;version&gt;</code> picks the GodspeedOS release (default: the latest); <code>--dir</code> puts it elsewhere; <code>--publisher &lt;you&gt;</code> fills in a service's <code>publisher</code>, so it can be packaged straight away. <code>utility</code>, <code>app</code> and <code>driver</code> are refused, with the reason: GodspeedOS cannot run those kinds yet.</td></tr>
     <tr><td><code>check</code></td><td>Validate the project, its toolchain pin, its stdlib release, and its contract against the OS's schema - without building.</td></tr>
     <tr><td><code>build [--arch &lt;isa&gt; | --all]</code></td><td>Build for one architecture (default <code>x86_64</code>; also <code>aarch64</code>, <code>armv7</code>, <code>riscv64</code>) or every one the OS supports. A service gives one ELF per architecture; a library, an rlib.</td></tr>
     <tr><td><code>test</code></td><td>Run a library's tests on your workstation. Refused for a service, which cannot run off a Godspeed machine.</td></tr>
@@ -90,14 +90,15 @@
   <h2 id="options">Options every command takes</h2>
   <div class="table-scroll"><table>
     <tr><th>Option</th><th>Meaning</th></tr>
-    <tr><td><code>--os &lt;path&gt;</code></td><td>The GodspeedOS checkout to build against. Default: <code>GODSPEED_OS</code>.</td></tr>
+    <tr><td><code>--os &lt;path&gt;</code></td><td>A GodspeedOS checkout to build against, instead of the platform kit for the project's release. Default: <code>GODSPEED_OS</code>. For working on the OS itself.</td></tr>
     <tr><td><code>--registry &lt;url&gt;</code></td><td>The registry. Default: <code>GODSPEED_REGISTRY</code>, then the last <code>login</code>, then the official registry.</td></tr>
   </table></div>
 
   <h2 id="env">Environment variables</h2>
   <div class="table-scroll"><table>
     <tr><th>Variable</th><th>Meaning</th></tr>
-    <tr><td><code>GODSPEED_OS</code></td><td>Path to a GodspeedOS checkout: its stdlib release, pinned toolchain, targets and contract schema. Read, never written.</td></tr>
+    <tr><td><code>GODSPEED_OS</code></td><td>Path to a GodspeedOS checkout, used instead of the platform kit. Read, never written.</td></tr>
+    <tr><td><code>GODSPEED_CACHE_DIR</code></td><td>Where the CLI keeps platform kits, in place of the default below.</td></tr>
     <tr><td><code>GODSPEED_REGISTRY</code></td><td>The registry URL.</td></tr>
     <tr><td><code>GODSPEED_TOKEN</code></td><td>A publisher token, in place of the stored one (for CI).</td></tr>
     <tr><td><code>GODSPEED_SIGNING_KEY</code></td><td>Your signing key's secret, in place of <code>signing-key.toml</code> (for CI).</td></tr>
@@ -115,6 +116,13 @@
     <tr><td><code>credentials.toml</code></td><td>Your token for each registry, and which registry is the default.</td></tr>
     <tr><td><code>update-check.toml</code></td><td>When this machine last asked for the latest release, and the answer. Delete it and the next command asks again.</td></tr>
     <tr><td><code>trust/</code></td><td>For each registry, the root of trust this machine accepted and the newest metadata versions it has seen, so it can never be sent back to older ones.</td></tr>
+  </table></div>
+  <p>In <code>~/.cache/godspeed/</code> (or <code>$XDG_CACHE_HOME/godspeed/</code>; on macOS
+  <code>~/Library/Caches/godspeed/</code>; on Windows <code>%LOCALAPPDATA%\godspeed\cache\</code>), only what can be
+  fetched again:</p>
+  <div class="table-scroll"><table>
+    <tr><th>File</th><th>Holds</th></tr>
+    <tr><td><code>platform/&lt;release&gt;/</code></td><td>The platform kit for one GodspeedOS release: the OS's toolchain pin, compiler flags, linker script, contract schema and version files, from one commit of the release tag, with each file's SHA-256 in <code>kit.toml</code>. A kit that no longer matches is removed and fetched again. <code>self uninstall</code> removes them.</td></tr>
   </table></div>
 
   <h2 id="project">A project's files</h2>

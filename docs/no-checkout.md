@@ -1,7 +1,14 @@
 # Installing the CLI should be enough: removing the OS checkout requirement
 
-**Status: PROPOSAL, 2026-10-15. Nothing here is built or approved. Option B needs a change in the
-GodspeedOS repository, which is the maintainer's to make or approve.**
+**Status: option A BUILT, 2026-10-16 (`src/kit.rs`), as the maintainer decided: A now as the bridge, B
+later. Option B needs a change in the GodspeedOS repository, which is the maintainer's to make; when it
+lands, only the fetching in `src/kit.rs` changes. Default release for `godspeed new`: the latest.**
+
+What was built differs from the sketch below in two details: the cache is the platform's cache directory
+(`~/.cache/godspeed/platform/<release>/`, `%LOCALAPPDATA%` on Windows), not `~/.godspeed`; and the tag is
+resolved to its commit first, so all of a kit's files come from one snapshot even if the tag moves. A
+library records no OS release (it has no stdlib dependency), so it uses the newest cached kit whose
+toolchain matches its pin, or the latest release.
 
 ## The problem
 
