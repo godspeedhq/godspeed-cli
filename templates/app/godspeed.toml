@@ -1,0 +1,13 @@
+# Godspeed project manifest. It says what kind of project this is, where its contract is, and what a
+# package of it says about itself. Name, version and the authority the app requests live in the
+# contract, not here.
+format   = 1
+kind     = "app"
+contract = "contracts/{{name}}.toml"
+
+description = "A Godspeed app"
+
+# The namespace a package of this app is published under: "alice" makes it alice/{{name}}.
+# `godspeed package` needs it.
+# publisher = "your-name"
+# license   = "MIT"

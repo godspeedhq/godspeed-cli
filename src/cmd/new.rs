@@ -82,6 +82,37 @@ const UTILITY: &[File] = &[
     },
 ];
 
+const APP: &[File] = &[
+    File {
+        path: "godspeed.toml",
+        body: include_str!("../../templates/app/godspeed.toml"),
+    },
+    File {
+        path: "Cargo.toml",
+        body: include_str!("../../templates/service/Cargo.toml.template"),
+    },
+    File {
+        path: "contracts/{{name}}.toml",
+        body: include_str!("../../templates/utility/contracts/contract.toml"),
+    },
+    File {
+        path: "src/main.rs",
+        body: include_str!("../../templates/app/src/main.rs"),
+    },
+    File {
+        path: "README.md",
+        body: include_str!("../../templates/app/README.md"),
+    },
+    File {
+        path: "rust-toolchain.toml",
+        body: TOOLCHAIN,
+    },
+    File {
+        path: ".gitignore",
+        body: GITIGNORE,
+    },
+];
+
 const LIBRARY: &[File] = &[
     File {
         path: "godspeed.toml",
@@ -112,12 +143,6 @@ const LIBRARY: &[File] = &[
 /// Kinds the CLI knows and the OS cannot run yet: why, and where the OS tracks it.
 const NOT_YET: &[(&str, &str, &str)] = &[
     (
-        "app",
-        "An app is a user-facing program on public application interfaces. GodspeedOS has none yet, and no \
-      terminating task either.",
-        "GodspeedOS docs/stdlib-design.md, section 1",
-    ),
-    (
         "driver",
         "A driver needs a device granted to it. GodspeedOS grants devices only from the supervisor's own \
       compiled spawn rows, so a driver outside the OS tree cannot be given one.",
@@ -125,7 +150,7 @@ const NOT_YET: &[(&str, &str, &str)] = &[
     ),
 ];
 
-const KINDS: &str = "service, utility, library (and later: app, driver)";
+const KINDS: &str = "service, utility, app, library (and later: driver)";
 
 pub fn run(
     platform: &Platform,
@@ -137,6 +162,7 @@ pub fn run(
     let kind = match kind {
         "service" => ProjectKind::Service,
         "utility" => ProjectKind::Utility,
+        "app" => ProjectKind::App,
         "library" => ProjectKind::Library,
         other => {
             if let Some((k, why, tracked)) = NOT_YET.iter().find(|(k, ..)| *k == other) {
@@ -181,6 +207,7 @@ pub fn run(
     let files = match kind {
         ProjectKind::Service => SERVICE,
         ProjectKind::Utility => UTILITY,
+        ProjectKind::App => APP,
         ProjectKind::Library => LIBRARY,
     };
     let targets = platform

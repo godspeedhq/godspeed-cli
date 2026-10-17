@@ -22,6 +22,8 @@ pub enum ProjectKind {
     /// A program that does one job and ends: built and packaged exactly as a service, with a contract, and run by
     /// the shell for one command line instead of kept running.
     Utility,
+    /// A utility that has the screen and the keyboard while it runs (`gs::app`).
+    App,
     Library,
 }
 
@@ -30,13 +32,14 @@ impl ProjectKind {
         match self {
             ProjectKind::Service => "service",
             ProjectKind::Utility => "utility",
+            ProjectKind::App => "app",
             ProjectKind::Library => "library",
         }
     }
 
     /// Is this a program GodspeedOS runs - built to an image, with a contract - rather than a library?
     pub fn runs(self) -> bool {
-        matches!(self, ProjectKind::Service | ProjectKind::Utility)
+        matches!(self, ProjectKind::Service | ProjectKind::Utility | ProjectKind::App)
     }
 }
 
@@ -104,17 +107,18 @@ impl Project {
         let kind = match raw.kind.as_str() {
             "service" => ProjectKind::Service,
             "utility" => ProjectKind::Utility,
+            "app" => ProjectKind::App,
             "library" => ProjectKind::Library,
             other => {
                 return Err(
                     invalid("read the project", format!("{MANIFEST} names kind \"{other}\"."))
-                        .expected("\"service\", \"utility\" or \"library\" - the kinds GodspeedOS can build today"),
+                        .expected("\"service\", \"utility\", \"app\" or \"library\" - the kinds GodspeedOS can build today"),
                 );
             }
         };
         let contract = match (kind, raw.contract) {
-            (ProjectKind::Service | ProjectKind::Utility, Some(c)) => Some(PathBuf::from(c)),
-            (ProjectKind::Service | ProjectKind::Utility, None) => {
+            (ProjectKind::Service | ProjectKind::Utility | ProjectKind::App, Some(c)) => Some(PathBuf::from(c)),
+            (ProjectKind::Service | ProjectKind::Utility | ProjectKind::App, None) => {
                 return Err(
                     invalid("read the project", format!("{MANIFEST} is a service with no contract."))
                         .expected("contract = \"contracts/<name>.toml\": a service declares the authority it requests"),

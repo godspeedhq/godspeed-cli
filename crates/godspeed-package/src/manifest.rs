@@ -33,6 +33,9 @@ pub enum Kind {
     /// 2026-10-17). A new value in format 1, not a new format: a reader that does not know it refuses the
     /// manifest by naming the kind, which is the refusal it already gives any kind it does not package.
     Utility,
+    /// A utility that owns the screen and the keyboard while it runs (GodspeedOS `gs::app`, the console
+    /// foreground). The operator approves the console at install; when it ends the shell has the console back.
+    App,
 }
 
 impl Kind {
@@ -41,6 +44,7 @@ impl Kind {
         match self {
             Kind::Service => "service",
             Kind::Utility => "utility",
+            Kind::App => "app",
         }
     }
 }

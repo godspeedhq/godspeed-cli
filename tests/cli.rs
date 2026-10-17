@@ -160,7 +160,6 @@ fn kinds_the_os_cannot_run_are_refused_with_the_reason() {
     let dir = scratch("kinds");
     let os = fixture_os();
     for (kind, mentions) in [
-        ("app", "application interfaces"),
         ("driver", "device"),
     ] {
         let o = godspeed(&dir, Some(&os), &["new", kind, "x"]);
