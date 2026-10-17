@@ -1,6 +1,6 @@
 //! {{name}}: a Godspeed service.
 //!
-//! A service starts at `service_main`, is handed its `ServiceContext` - the only authority it holds -
+//! A service starts at `{{entry}}`, is handed its `ServiceContext` - the only authority it holds -
 //! and never returns. This one logs that it started, then parks: it holds still and uses no CPU until
 //! it is stopped.
 
@@ -15,7 +15,7 @@ use godspeed::{self as gs, ServiceContext};
 // itself counts as unsafe code; nothing else in this crate may be.
 #[allow(unsafe_code)]
 #[no_mangle]
-pub extern "C" fn service_main(ctx: ServiceContext) -> ! {
+pub extern "C" fn {{entry}}(ctx: ServiceContext) -> ! {
     ctx.log("{{name}}: started");
     gs::ipc::park(&ctx)
 }

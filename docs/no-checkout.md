@@ -1,8 +1,8 @@
 # Installing the CLI should be enough: removing the OS checkout requirement
 
 **Status: option A BUILT, 2026-10-16 (`src/kit.rs`), as the maintainer decided: A now as the bridge, B
-later. Option B needs a change in the GodspeedOS repository, which is the maintainer's to make; when it
-lands, only the fetching in `src/kit.rs` changes. Default release for `godspeed new`: the latest.**
+later. Option B was approved 2026-10-17 and is built on both sides (`backlog/01` holds its state); a release
+without the file still uses A. Default release for `godspeed new`: the latest.**
 
 What was built differs from the sketch below in two details: the cache is the platform's cache directory
 (`~/.cache/godspeed/platform/<release>/`, `%LOCALAPPDATA%` on Windows), not `~/.godspeed`; and the tag is

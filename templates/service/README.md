@@ -4,7 +4,7 @@ A Godspeed service, created by `godspeed new service {{name}}` against GodspeedO
 
 ## Files
 
-- `src/main.rs` - the service. It starts at `service_main` and never returns.
+- `src/main.rs` - the service. It starts at `{{entry}}` and never returns.
 - `contracts/{{name}}.toml` - the authority the service **requests**. It grants nothing; the OS decides.
 - `godspeed.toml` - what kind of project this is, for the `godspeed` CLI.
 - `rust-toolchain.toml` - the compiler GodspeedOS {{tag}} is built with.

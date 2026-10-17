@@ -135,7 +135,7 @@ pub fn run(platform: &Platform, project: &Project, arches: &[&'static Arch]) -> 
             flags.push("-C".into());
             flags.push(format!("link-arg=-T{}", platform.linker_script.display()));
             flags.push("-C".into());
-            flags.push("link-arg=--entry=service_main".into());
+            flags.push(format!("link-arg=--entry={}", platform.entry));
         }
         let flags_toml = toml::Value::Array(flags.into_iter().map(toml::Value::String).collect());
         let status = cargo(platform, &project.root)

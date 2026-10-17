@@ -21,7 +21,7 @@ pub fn run(platform: &Platform, project: &Project) -> Result<()> {
     check_stdlib(platform, project, &mut problems);
     if project.kind == ProjectKind::Service {
         check_contract(platform, project, cargo_name, &mut problems);
-        check_entry_point(project, &mut problems);
+        check_entry_point(project, &platform.entry, &mut problems);
     }
 
     if problems.is_empty() {
@@ -185,25 +185,27 @@ pub fn schema_errors(platform: &Platform, contract: &toml::Value) -> Vec<String>
     }
 }
 
-/// The one mistake that compiles, links and then fails silently at boot: an unexported entry point.
-fn check_entry_point(project: &Project, problems: &mut Vec<Diagnostic>) {
+/// The one mistake that compiles, links and then fails silently at boot: an unexported entry point. `entry` is
+/// the release's entry symbol (its platform file's, or `service_main` for a release that has none).
+fn check_entry_point(project: &Project, entry: &str, problems: &mut Vec<Diagnostic>) {
     let path = project.root.join("src/main.rs");
+    let signature = format!("`pub extern \"C\" fn {entry}(ctx: ServiceContext) -> !`");
     let Ok(src) = std::fs::read_to_string(&path) else {
-        problems.push(
-            problem("src/main.rs is missing.".into())
-                .expected("a service entry point: `pub extern \"C\" fn service_main(ctx: ServiceContext) -> !`"),
-        );
+        problems
+            .push(problem("src/main.rs is missing.".into()).expected(format!("a service entry point: {signature}")));
         return;
     };
-    if !src.contains("fn service_main") {
+    if !src.contains(&format!("fn {entry}")) {
         problems.push(
-            problem("src/main.rs has no `service_main`.".into())
-                .expected("`pub extern \"C\" fn service_main(ctx: ServiceContext) -> !` - where every service starts"),
+            problem(format!("src/main.rs has no `{entry}`."))
+                .expected(format!("{signature} - where every service starts")),
         );
     } else if !src.contains("no_mangle") {
-        problems.push(problem("`service_main` is not marked `#[no_mangle]`.".into()).expected(
-            "#[no_mangle] on `service_main`. Without it the loader cannot find the entry point; the \
-                       service would start at address 0 and fault before its first line",
-        ));
+        problems.push(
+            problem(format!("`{entry}` is not marked `#[no_mangle]`.")).expected(format!(
+                "#[no_mangle] on `{entry}`. Without it the loader cannot find the entry point; the \
+                       service would start at address 0 and fault before its first line"
+            )),
+        );
     }
 }

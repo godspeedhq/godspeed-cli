@@ -164,6 +164,7 @@ pub fn run(
             .replace("{{git}}", OS_GIT_URL)
             .replace("{{toolchain}}", &platform.toolchain)
             .replace("{{targets}}", &targets)
+            .replace("{{entry}}", &platform.entry)
     };
 
     for f in files {

@@ -17,6 +17,13 @@
 //! | the service linker script | `services/user.ld` |
 //! | the service contract schema | `contracts/schema/service.schema.json` |
 //! | the stdlib crate exists, and is named `godspeed` | `stdlib/rust/Cargo.toml` |
+//! | the entry symbol | nowhere: every OS service's `build.rs` repeats it, so it is [`DEFAULT_ENTRY`] |
+//!
+//! **A release that publishes a platform file** (`godspeed-platform.toml`, the OS's
+//! `docs/developer-services-design.md` section 11) carries all seven facts in that one file instead, the
+//! entry symbol included. A kit fetched from such a release holds the file, and the linker script it
+//! carries written out beside it, and is read by [`Platform::open`] from the file: the files above are read
+//! only from a checkout, or from a release that has no platform file. `backlog/01` has the history.
 
 use crate::diag::{Diagnostic, Kind, Stage};
 use crate::kit;
@@ -29,6 +36,14 @@ pub const OS_ENV: &str = "GODSPEED_OS";
 
 /// The public repository the generated project's stdlib dependency points at.
 pub const OS_GIT_URL: &str = "https://github.com/godspeedhq/godspeed-os";
+
+/// The file a GodspeedOS release publishes for developer tooling: the facts below, in one place.
+pub const PLATFORM_FILE: &str = "godspeed-platform.toml";
+/// The platform-file formats this CLI reads. A newer one is refused, never guessed at.
+pub const PLATFORM_FORMAT: i64 = 1;
+/// Where a service starts, for a release that does not say: every release before the platform file, whose
+/// services' `build.rs` all link with `--entry=service_main`.
+pub const DEFAULT_ENTRY: &str = "service_main";
 
 /// Where the platform's files came from.
 #[derive(Debug, Clone)]
@@ -58,6 +73,8 @@ pub struct Platform {
     pub targets: Vec<String>,
     pub linker_script: PathBuf,
     pub schema: serde_json::Value,
+    /// The symbol a service is linked to start at.
+    pub entry: String,
     config: toml::Table,
 }
 
@@ -140,6 +157,9 @@ impl Platform {
         if !root.is_dir() {
             return Err(not_a_checkout(root, "the directory does not exist".into()));
         }
+        if root.join(PLATFORM_FILE).is_file() {
+            return Self::open_platform_file(root);
+        }
 
         let ws = read_toml(root, "Cargo.toml")?;
         let version = ws
@@ -207,6 +227,41 @@ impl Platform {
             targets,
             linker_script,
             schema,
+            entry: DEFAULT_ENTRY.to_string(),
+            config,
+        })
+    }
+
+    /// A kit fetched from a release that publishes `godspeed-platform.toml`: every fact from that file, and
+    /// the linker script from the copy written beside it when the kit was fetched.
+    fn open_platform_file(root: &Path) -> Result<Platform, Diagnostic> {
+        let text = std::fs::read_to_string(root.join(PLATFORM_FILE))
+            .map_err(|e| not_a_checkout(root, format!("cannot read {PLATFORM_FILE}: {e}")))?;
+        let file = PlatformFile::parse(&text).map_err(|e| e.diagnostic(root))?;
+        let linker_script = root.join(LINKER_SCRIPT_IN_KIT);
+        if !linker_script.is_file() {
+            return Err(not_a_checkout(root, format!("{LINKER_SCRIPT_IN_KIT} is missing")));
+        }
+        let mut target = toml::Table::new();
+        for (triple, flags) in &file.rustflags {
+            let mut t = toml::Table::new();
+            t.insert(
+                "rustflags".into(),
+                toml::Value::Array(flags.iter().cloned().map(toml::Value::String).collect()),
+            );
+            target.insert(triple.clone(), toml::Value::Table(t));
+        }
+        let mut config = toml::Table::new();
+        config.insert("target".into(), toml::Value::Table(target));
+        Ok(Platform {
+            root: root.to_path_buf(),
+            source: Source::Checkout,
+            version: file.os,
+            toolchain: file.toolchain,
+            targets: file.targets,
+            linker_script,
+            schema: file.schema,
+            entry: file.entry,
             config,
         })
     }
@@ -248,6 +303,122 @@ impl Platform {
     /// The pattern a service name must match, read from the schema so the CLI never keeps a second copy.
     pub fn name_pattern(&self) -> Option<&str> {
         self.schema.get("properties")?.get("name")?.get("pattern")?.as_str()
+    }
+}
+
+/// Where a kit built from a platform file keeps the linker script the file carries, so a build passes it to
+/// the linker by path exactly as it does a checkout's.
+pub const LINKER_SCRIPT_IN_KIT: &str = "services/user.ld";
+
+/// What a release's `godspeed-platform.toml` says, checked: every fact present and of the right shape, and a
+/// format this CLI knows.
+pub struct PlatformFile {
+    pub os: String,
+    pub commit: Option<String>,
+    pub toolchain: String,
+    pub targets: Vec<String>,
+    pub rustflags: Vec<(String, Vec<String>)>,
+    pub entry: String,
+    pub linker_script: String,
+    pub schema: serde_json::Value,
+}
+
+/// Why a platform file was refused.
+pub enum PlatformFileError {
+    /// A format this CLI does not read: a newer release than this CLI knows.
+    NewerFormat(i64),
+    /// Not a platform file this CLI can use.
+    Malformed(String),
+}
+
+impl PlatformFileError {
+    pub fn diagnostic(&self, from: &Path) -> Diagnostic {
+        match self {
+            PlatformFileError::NewerFormat(n) => Diagnostic::new(
+                Kind::Environment,
+                Stage::Setup,
+                "read the GodspeedOS platform file",
+                format!("This GodspeedOS release describes itself in platform-file format {n}, and this godspeed reads format {PLATFORM_FORMAT}."),
+            )
+            .expected(format!("a godspeed that reads format {n}"))
+            .next("Run `godspeed self update`, then the command again."),
+            PlatformFileError::Malformed(why) => not_a_checkout(from, format!("its {PLATFORM_FILE} {why}")),
+        }
+    }
+}
+
+impl PlatformFile {
+    pub fn parse(text: &str) -> Result<PlatformFile, PlatformFileError> {
+        let bad = |why: &str| PlatformFileError::Malformed(why.to_string());
+        let t: toml::Table = text
+            .parse()
+            .map_err(|e| PlatformFileError::Malformed(format!("is not valid TOML: {e}")))?;
+        // The format first: a newer file may have changed any key below, so nothing else is read from it.
+        match t.get("format").and_then(|v| v.as_integer()) {
+            Some(PLATFORM_FORMAT) => {}
+            Some(n) if n > PLATFORM_FORMAT => return Err(PlatformFileError::NewerFormat(n)),
+            Some(_) => return Err(bad("has a format number this CLI does not know")),
+            None => return Err(bad("has no format")),
+        }
+        let s =
+            |table: Option<&toml::Value>, key: &str| -> Option<String> { table?.get(key)?.as_str().map(String::from) };
+        let strings = |v: Option<&toml::Value>| -> Option<Vec<String>> {
+            v?.as_array()?.iter().map(|x| x.as_str().map(String::from)).collect()
+        };
+        let os = t
+            .get("os")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| bad("has no os version"))?
+            .to_string();
+        if s(t.get("stdlib"), "crate").as_deref() != Some("godspeed") {
+            return Err(bad("does not name the `godspeed` stdlib crate"));
+        }
+        let toolchain = s(t.get("toolchain"), "channel").ok_or_else(|| bad("has no toolchain channel"))?;
+        let targets = strings(t.get("toolchain").and_then(|tc| tc.get("targets")))
+            .filter(|v| !v.is_empty())
+            .ok_or_else(|| bad("lists no targets"))?;
+        let flags = t
+            .get("rustflags")
+            .and_then(|v| v.as_table())
+            .ok_or_else(|| bad("has no [rustflags]"))?;
+        let mut rustflags = Vec::new();
+        for triple in &targets {
+            let f = strings(flags.get(triple))
+                .ok_or_else(|| PlatformFileError::Malformed(format!("has no rustflags for {triple}")))?;
+            rustflags.push((triple.clone(), f));
+        }
+        let entry = s(t.get("link"), "entry").ok_or_else(|| bad("has no link entry symbol"))?;
+        if entry.is_empty() || !entry.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_') {
+            return Err(bad("names an entry symbol that is not an identifier"));
+        }
+        let script = s(t.get("link"), "script").ok_or_else(|| bad("has no link script"))?;
+        let files = t
+            .get("files")
+            .and_then(|v| v.as_table())
+            .ok_or_else(|| bad("has no [files]"))?;
+        let linker_script = files
+            .get(&script)
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                PlatformFileError::Malformed(format!("does not carry {script}, the linker script it names"))
+            })?
+            .to_string();
+        let schema_text = files
+            .get("service.schema.json")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| bad("does not carry the contract schema"))?;
+        let schema = serde_json::from_str(schema_text)
+            .map_err(|e| PlatformFileError::Malformed(format!("carries a contract schema that is not JSON: {e}")))?;
+        Ok(PlatformFile {
+            os,
+            commit: t.get("commit").and_then(|v| v.as_str()).map(String::from),
+            toolchain,
+            targets,
+            rustflags,
+            entry,
+            linker_script,
+            schema,
+        })
     }
 }
 

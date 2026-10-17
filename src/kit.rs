@@ -7,11 +7,16 @@
 //! release with each file's SHA-256 in `kit.toml`. A cached kit that no longer matches its digests is
 //! discarded and fetched again.
 //!
-//! This is option A of `docs/no-checkout.md`, the bridge: it reads files that are the OS's own build
-//! inputs, at their paths in the OS repository. When the OS publishes a platform file as a release asset
-//! (option B), only the fetching here changes.
+//! **Option B first, then option A** (`docs/no-checkout.md`, `backlog/01`). A release that publishes
+//! `godspeed-platform.toml` (the OS's `docs/developer-services-design.md` section 11) is fetched as that one
+//! file, checked against the release's `SHA256SUMS-<tag>` and refused in a format this CLI does not read; the
+//! kit is the file and the linker script it carries, written out beside it. A release without one (every
+//! release up to 0.28.0) is fetched as the six build files below, at their paths in the OS repository,
+//! which is the bridge. The checksum comes from the same release as the file, so it catches a damaged or
+//! truncated download, not a tampered release: the trust is what downloading from GitHub gives, no more.
 
 use crate::diag::{Diagnostic, Kind, Stage};
+use crate::platform::{PlatformFile, LINKER_SCRIPT_IN_KIT, PLATFORM_FILE};
 use godspeed_package::{Sha256Digest, Version};
 use std::collections::BTreeMap;
 use std::io::Read;
@@ -88,9 +93,10 @@ fn cached(dir: &Path) -> Option<Kit> {
     let intact =
         record.files.iter().all(|(path, digest)| {
             std::fs::read(dir.join(path)).is_ok_and(|b| Sha256Digest::of(&b).to_string() == *digest)
-        }) && FILES
-            .iter()
-            .all(|(path, required)| !required || record.files.contains_key(*path));
+        }) && (record.files.contains_key(PLATFORM_FILE)
+            || FILES
+                .iter()
+                .all(|(path, required)| !required || record.files.contains_key(*path)));
     if !intact {
         let _ = std::fs::remove_dir_all(dir);
         return None;
@@ -130,6 +136,9 @@ fn fetch(version: &Version, kits: &Path, dir: &Path) -> Result<Kit, Diagnostic> 
     let doing = format!("get GodspeedOS {version}");
     let tag = format!("v{version}");
     eprintln!("Fetching the GodspeedOS {version} platform kit (once for each release)...");
+    if let Some(kit) = fetch_platform_file(version, &tag, kits, dir, &doing)? {
+        return Ok(kit);
+    }
     // One snapshot: if the tag resolves to a commit, every file comes from that commit, even if the tag
     // moves meanwhile. If it cannot be resolved (GitHub's API limits anonymous callers), the tag is used.
     let reference = commit_of(&tag).unwrap_or_else(|| tag.clone());
@@ -183,6 +192,96 @@ fn fetch(version: &Version, kits: &Path, dir: &Path) -> Result<Kit, Diagnostic> 
             Kind::Io,
             Stage::Setup,
             doing,
+            format!("The kit was fetched but could not be kept in {}.", dir.display()),
+        )
+    })
+}
+
+/// The kit for a release that publishes `godspeed-platform.toml`, or `None` for one that does not.
+fn fetch_platform_file(
+    version: &Version,
+    tag: &str,
+    kits: &Path,
+    dir: &Path,
+    doing: &str,
+) -> Result<Option<Kit>, Diagnostic> {
+    let base = format!("{}/download/{tag}", releases_base());
+    let Some(bytes) = get(&format!("{base}/{PLATFORM_FILE}"), doing)? else {
+        return Ok(None);
+    };
+    let integrity = |why: String| {
+        Diagnostic::new(Kind::IntegrityFailure, Stage::Setup, doing.to_string(), why)
+            .next("Run the command again; nothing was kept. If it persists, name an OS checkout with `--os <path>`.")
+    };
+    let sums_name = format!("SHA256SUMS-{tag}");
+    let Some(sums) = get(&format!("{base}/{sums_name}"), doing)? else {
+        return Err(integrity(format!(
+            "GodspeedOS {tag} publishes {PLATFORM_FILE} but no {sums_name} to check it against."
+        )));
+    };
+    let listed = String::from_utf8_lossy(&sums).lines().find_map(|line| {
+        let mut parts = line.split_whitespace();
+        let digest = parts.next()?;
+        let name = parts.next()?.trim_start_matches('*');
+        (name == PLATFORM_FILE).then(|| format!("sha256:{}", digest.to_ascii_lowercase()))
+    });
+    let got = Sha256Digest::of(&bytes).to_string();
+    match listed {
+        None => return Err(integrity(format!("{sums_name} does not list {PLATFORM_FILE}."))),
+        Some(want) if want != got => {
+            return Err(integrity(format!(
+                "{PLATFORM_FILE} from GodspeedOS {tag} is not the file {sums_name} lists: it is {got}, and the list says {want}."
+            )))
+        }
+        Some(_) => {}
+    }
+    let text = std::str::from_utf8(&bytes)
+        .map_err(|_| integrity(format!("{PLATFORM_FILE} from GodspeedOS {tag} is not text.")))?;
+    let file = PlatformFile::parse(text).map_err(|e| e.diagnostic(Path::new(&format!("GodspeedOS {tag}"))))?;
+    if file.os != version.to_string() {
+        return Err(integrity(format!(
+            "{PLATFORM_FILE} from GodspeedOS {tag} says it describes GodspeedOS {}.",
+            file.os
+        )));
+    }
+
+    let staging = kits.join(format!(".{version}.{}.partial", std::process::id()));
+    let _ = std::fs::remove_dir_all(&staging);
+    let result = (|| {
+        let mut files = BTreeMap::new();
+        for (path, content) in [
+            (PLATFORM_FILE, &bytes[..]),
+            (LINKER_SCRIPT_IN_KIT, file.linker_script.as_bytes()),
+        ] {
+            let target = staging.join(path);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| Diagnostic::io(doing, parent, &e))?;
+            }
+            std::fs::write(&target, content).map_err(|e| Diagnostic::io(doing, &target, &e))?;
+            files.insert(path.to_string(), Sha256Digest::of(content).to_string());
+        }
+        let record = Record {
+            release: version.to_string(),
+            reference: file.commit.clone().unwrap_or_else(|| tag.to_string()),
+            files,
+        };
+        let text = toml::to_string(&record).expect("a record serialises");
+        let path = staging.join(KIT_FILE);
+        std::fs::write(&path, text).map_err(|e| Diagnostic::io(doing, &path, &e))?;
+        Ok(())
+    })();
+    if let Err(d) = result {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(d);
+    }
+    if std::fs::rename(&staging, dir).is_err() {
+        let _ = std::fs::remove_dir_all(&staging);
+    }
+    cached(dir).map(Some).ok_or_else(|| {
+        Diagnostic::new(
+            Kind::Io,
+            Stage::Setup,
+            doing.to_string(),
             format!("The kit was fetched but could not be kept in {}.", dir.display()),
         )
     })

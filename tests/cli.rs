@@ -1246,6 +1246,8 @@ fn publish_reconciles_an_unanswered_finalise_and_a_dry_run_uploads_nothing() {
 struct OsServer {
     /// Paths asked for, in order.
     asked: Vec<String>,
+    /// The release's `godspeed-platform.toml` and `SHA256SUMS-v0.28.0`, when it publishes them (`backlog/01`).
+    platform: Option<(Vec<u8>, Vec<u8>)>,
 }
 
 /// A stand-in for GitHub: `releases/latest` is v0.28.0, the tag is commit `c0ffee...`, and `raw/<commit>/...`
@@ -1273,7 +1275,16 @@ fn os_server(state: std::sync::Arc<std::sync::Mutex<OsServer>>) -> String {
                 .strip_prefix(&format!("/raw/{COMMIT}/"))
                 .map(|rel| fixture_os().join(rel))
                 .and_then(|p| std::fs::read(p).ok());
+            let asset = {
+                let s = state.lock().unwrap();
+                match (path.as_str(), &s.platform) {
+                    ("/releases/download/v0.28.0/godspeed-platform.toml", Some((p, _))) => Some(p.clone()),
+                    ("/releases/download/v0.28.0/SHA256SUMS-v0.28.0", Some((_, sums))) => Some(sums.clone()),
+                    _ => None,
+                }
+            };
             let (status, extra, body) = match path.as_str() {
+                _ if asset.is_some() => ("200 OK", String::new(), asset.unwrap()),
                 "/releases/latest" => (
                     "302 Found",
                     "Location: https://github.com/godspeedhq/godspeed-os/releases/tag/v0.28.0\r\n".to_string(),
@@ -1322,8 +1333,16 @@ fn without_a_checkout_the_platform_kit_is_fetched_once_and_cached() {
         stderr(&o)
     );
     let asked = std::mem::take(&mut state.lock().unwrap().asked);
-    assert_eq!(asked[..2], ["/releases/latest", "/commits/v0.28.0"]);
-    assert!(asked[2..].iter().all(|p| p.starts_with("/raw/c0ffee")), "{asked:?}");
+    // The release has no platform file (every release up to 0.28.0), so after asking for it, the six files.
+    assert_eq!(
+        asked[..3],
+        [
+            "/releases/latest",
+            "/releases/download/v0.28.0/godspeed-platform.toml",
+            "/commits/v0.28.0"
+        ]
+    );
+    assert!(asked[3..].iter().all(|p| p.starts_with("/raw/c0ffee")), "{asked:?}");
     let kit = dir.join("cache/platform/0.28.0");
     assert!(kit.join("kit.toml").is_file() && kit.join("services/user.ld").is_file());
 
@@ -1351,4 +1370,125 @@ fn without_a_checkout_the_platform_kit_is_fetched_once_and_cached() {
     assert_eq!(code(&o), 28, "{}", stderr(&o));
     assert!(stderr(&o).contains("GodspeedOS v9.9.9 has no"), "{}", stderr(&o));
     assert!(!dir.join("other").exists());
+}
+
+/// The fixture OS as a release's `godspeed-platform.toml` would carry it, with this entry symbol and format.
+fn fixture_platform_file(entry: &str, format: u32) -> String {
+    let read = |rel: &str| {
+        std::fs::read_to_string(fixture_os().join(rel))
+            .unwrap()
+            .replace("\r\n", "\n")
+    };
+    let toml_str = |s: &str| toml_string(s);
+    let targets = [
+        "x86_64-unknown-none",
+        "armv7a-none-eabi",
+        "aarch64-unknown-none",
+        "riscv64imac-unknown-none-elf",
+    ];
+    let mut t = format!(
+        "format = {format}\nos = \"0.28.0\"\ncommit = \"c0ffee00c0ffee00c0ffee00c0ffee00c0ffee00\"\n\n\
+         [stdlib]\ncrate = \"godspeed\"\ntag = \"v0.28.0\"\n\n\
+         [toolchain]\nchannel = \"nightly-2026-05-16\"\ntargets = [{}]\n\n\
+         [link]\nentry = \"{entry}\"\nscript = \"user.ld\"\n\n[rustflags]\n",
+        targets
+            .iter()
+            .map(|t| format!("\"{t}\""))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    for target in targets {
+        t.push_str(&format!("\"{target}\" = [\"-C\", \"relocation-model=static\"]\n"));
+    }
+    t.push_str(&format!(
+        "\n[files]\n\"user.ld\" = {}\n\"service.schema.json\" = {}\n",
+        toml_str(&read("services/user.ld")),
+        toml_str(&read("contracts/schema/service.schema.json"))
+    ));
+    t
+}
+
+/// A TOML basic string.
+fn toml_string(s: &str) -> String {
+    let mut out = String::from("\"");
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+fn sums_for(file: &str, extra_digest: Option<&str>) -> Vec<u8> {
+    let d = godspeed_package::Sha256Digest::of(file.as_bytes()).to_string();
+    let hex = extra_digest.unwrap_or(d.trim_start_matches("sha256:"));
+    format!("{hex}  godspeed-platform.toml\n0000  godspeed-os-v0.28.0-x86_64.img.xz\n").into_bytes()
+}
+
+#[test]
+fn a_release_with_a_platform_file_is_read_from_it_and_checked() {
+    use std::sync::{Arc, Mutex};
+    let state = Arc::new(Mutex::new(OsServer::default()));
+    let url = os_server(state.clone());
+    let run = |dir: &Path, cwd: &Path, args: &[&str]| {
+        command(cwd, None, args)
+            .env("GODSPEED_CACHE_DIR", dir.join("cache"))
+            .env("GODSPEED_TEST_OS_URL", &url)
+            .output()
+            .unwrap()
+    };
+
+    // The file, checked against SHA256SUMS: no build file of the OS repository is asked for, and the entry
+    // symbol is the file's, not the CLI's own default.
+    let dir = scratch("platform-file");
+    let file = fixture_platform_file("start_here", 1);
+    state.lock().unwrap().platform = Some((file.clone().into_bytes(), sums_for(&file, None)));
+    let o = run(&dir, &dir, &["new", "service", "hello", "--publisher", "alice"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    let asked = std::mem::take(&mut state.lock().unwrap().asked);
+    assert!(asked.iter().all(|p| !p.starts_with("/raw/")), "{asked:?}");
+    assert!(asked.iter().any(|p| p.ends_with("/SHA256SUMS-v0.28.0")), "{asked:?}");
+    let kit = dir.join("cache/platform/0.28.0");
+    assert!(kit.join("godspeed-platform.toml").is_file() && kit.join("services/user.ld").is_file());
+    assert_eq!(
+        std::fs::read_to_string(kit.join("services/user.ld")).unwrap(),
+        std::fs::read_to_string(fixture_os().join("services/user.ld"))
+            .unwrap()
+            .replace("\r\n", "\n")
+    );
+    let main = std::fs::read_to_string(dir.join("hello/src/main.rs")).unwrap();
+    assert!(
+        main.contains("fn start_here") && !main.contains("service_main"),
+        "{main}"
+    );
+    let o = run(&dir, &dir.join("hello"), &["check"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+
+    // A file that is not the one SHA256SUMS lists is refused, and nothing is kept.
+    let dir = scratch("platform-file-tampered");
+    state.lock().unwrap().platform = Some((file.clone().into_bytes(), sums_for(&file, Some(&"ab".repeat(32)))));
+    let o = run(&dir, &dir, &["new", "service", "hello", "--publisher", "alice"]);
+    assert_eq!(code(&o), 17, "{}", stderr(&o));
+    assert!(
+        stderr(&o).contains("is not the file SHA256SUMS-v0.28.0 lists"),
+        "{}",
+        stderr(&o)
+    );
+    assert!(!dir.join("cache/platform/0.28.0").exists() && !dir.join("hello").exists());
+
+    // A newer format than this CLI reads is refused, with the way forward, never guessed at.
+    let dir = scratch("platform-file-newer");
+    let newer = fixture_platform_file("service_main", 2);
+    state.lock().unwrap().platform = Some((newer.clone().into_bytes(), sums_for(&newer, None)));
+    let o = run(&dir, &dir, &["new", "service", "hello", "--publisher", "alice"]);
+    assert_eq!(code(&o), 11, "{}", stderr(&o));
+    assert!(stderr(&o).contains("platform-file format 2"), "{}", stderr(&o));
+    assert!(stderr(&o).contains("godspeed self update"), "{}", stderr(&o));
+    assert!(!dir.join("cache/platform/0.28.0").exists());
 }

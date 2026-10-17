@@ -1,8 +1,10 @@
 # 1. The platform kit reads six of the OS repository's private build files, and hard-codes a seventh fact
 
 **Status: OPEN - recorded 2026-10-17. Option A (the bridge) is built and released in `cli-v0.2.0`. Option
-B is proposed in the OS repository (`docs/developer-services-design.md` section 11) and is NOT approved;
-the OS side is the OS maintainer's to build or approve. Nothing for option B is built in this repository.**
+B was APPROVED by the maintainer on 2026-10-17 (the OS's `docs/developer-services-design.md` 11.5) and is
+built on both sides, released on neither: the OS writes the file from its next release (its
+`scripts/platform_file.py`), and the CLI side is on branch `feat/platform-file`, to be released after
+that OS release. It closes when a released CLI has read the file from a published OS release.**
 
 ## What is wrong
 
@@ -91,3 +93,22 @@ mode in `osdev`'s `EXTRA_CHECKS`, and what it does not do, is section 11 of the 
      one without, and one with an unknown format.
 
    It is released after the first OS release that carries the file.
+
+## As built, 2026-10-17 (CLI side, branch `feat/platform-file`)
+
+- `src/kit.rs` asks for `releases/download/<tag>/godspeed-platform.toml` first. Present, it must be listed in
+  `SHA256SUMS-<tag>` with the same digest (else `IntegrityFailure`, exit 17, and nothing kept), must describe
+  the release asked for, and must be a format this CLI reads. The kit is then the file and the linker script
+  it carries, written to `services/user.ld` beside it. Absent (every release up to 0.28.0), the six files, as
+  before.
+- `src/platform.rs` reads such a kit from the file (`PlatformFile::parse`); a newer `format` is refused with
+  "run `godspeed self update`" (`Environment`, exit 11) before any other key is read. `Platform::entry` is the
+  file's `[link] entry`, or `service_main` for a checkout or an older release.
+- `build.rs` links with `--entry=<entry>`, `check.rs` looks for that symbol, and the service template's
+  `src/main.rs` and README are filled with it (`{{entry}}`).
+- Tests (`tests/cli.rs`, `a_release_with_a_platform_file_is_read_from_it_and_checked`): a release with the
+  file and an entry of `start_here` (no raw file asked for; the generated service starts at `start_here`;
+  `check` passes), one whose `SHA256SUMS` lists another digest, and one in format 2. The existing kit test
+  now sees the platform file asked for, and missed, before the six files.
+- The OS side was checked against this reader with its own output: `scripts/platform_file.py --out` on
+  the OS repository at `bd4aee44`.
