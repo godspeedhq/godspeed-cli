@@ -189,6 +189,7 @@ pub fn parse(text: &str) -> Result<OwnedManifest, ParseError> {
         Some("service") => Some(Kind::Service),
         Some("utility") => Some(Kind::Utility),
         Some("app") => Some(Kind::App),
+        Some("driver") => Some(Kind::Driver),
         Some("library") => {
             c.bad(
                 "package.kind",
@@ -199,7 +200,7 @@ pub fn parse(text: &str) -> Result<OwnedManifest, ParseError> {
             None
         }
         Some(_) => {
-            c.bad("package.kind", ProblemKind::Malformed("the kind is \"service\", \"utility\" or \"app\""));
+            c.bad("package.kind", ProblemKind::Malformed("the kind is \"service\", \"utility\", \"app\" or \"driver\""));
             None
         }
         None => None,

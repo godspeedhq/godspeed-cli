@@ -1,0 +1,18 @@
+# The driver's contract: what it REQUESTS, the device among it. It grants nothing. The operator approves
+# the device at `godspeed install`, and the OS finds WHICH device that is on its own bus scan: a contract
+# names a kind of device, never an address.
+# Format: contracts/schema/service.schema.json in GodspeedOS. `godspeed check` validates against it.
+name    = "{{name}}"
+version = "0.1.0"
+
+[resources.memory]
+request = "16MiB"
+limit   = "16MiB"
+
+[capabilities]
+log_write = true      # write lines to the kernel log
+# The device, by what the PCI bus says it is: class, subclass and programming interface, six hex digits.
+# This one is QEMU's teaching device `edu` (`-device edu`), class 00:ff:00, which no driver in GodspeedOS
+# claims. A class an in-tree driver handles is refused at install.
+hw_pci_class = "00ff00"
+hw_pci_bar   = 0      # its registers are in BAR 0

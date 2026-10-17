@@ -36,7 +36,7 @@ pub fn run(platform: &Platform, project: &Project, arches: &[&'static Arch], out
         return Err(refuse(
             Kind::NotImplemented,
             headline,
-            "Only services, utilities and apps are packaged. A library is depended on, not installed, and how libraries are \
+            "Only services, utilities, apps and drivers are packaged. A library is depended on, not installed, and how libraries are \
              distributed is not defined yet."
                 .into(),
         )
@@ -116,6 +116,7 @@ pub fn run(platform: &Platform, project: &Project, arches: &[&'static Arch], out
         kind: match project.kind {
             ProjectKind::Utility => pkg::Kind::Utility,
             ProjectKind::App => pkg::Kind::App,
+            ProjectKind::Driver => pkg::Kind::Driver,
             _ => pkg::Kind::Service,
         },
         description: project.description.as_deref(),

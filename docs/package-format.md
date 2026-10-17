@@ -63,7 +63,7 @@ File names are fixed. The manifest never names a path, so it cannot point a read
 | `format` | required; `1`. Any other value is refused before anything else is read (section 5). |
 | `package.name` | required; `publisher/name`, each part a lowercase letter then lowercase letters, digits and `-`, at most 64 bytes - the OS contract schema's rule for a service name. |
 | `package.version` | required; `MAJOR.MINOR.PATCH`, decimal, no leading zeros, no suffix. Equal to the contract's `version`. |
-| `package.kind` | required; `service`, `utility` or `app` (the last two added 2026-10-17, still format 1: a reader that does not know one refuses the manifest by naming the kind). A `library` is refused with the reason: libraries are depended on, not installed, and their distribution is not defined yet. `driver` cannot exist until the OS can grant a device to a package. |
+| `package.kind` | required; `service`, `utility`, `app` or `driver` (the last three added 2026-10-17, still format 1: a reader that does not know one refuses the manifest by naming the kind). A `library` is refused with the reason: libraries are depended on, not installed, and their distribution is not defined yet. A `driver`'s contract names its device by PCI class (`hw_pci_class`, `hw_pci_bar`). |
 | `package.description` | optional; at most 256 bytes, no control characters. |
 | `package.license` | optional; at most 64 bytes, no control characters. Not interpreted. |
 | `os.release` | required; the GodspeedOS release the package was built against. |

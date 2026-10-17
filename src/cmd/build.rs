@@ -168,7 +168,7 @@ pub fn run(platform: &Platform, project: &Project, arches: &[&'static Arch]) -> 
 
         let dir = project.root.join("target").join(arch.triple).join("release");
         let artifact = match project.kind {
-            ProjectKind::Service | ProjectKind::Utility | ProjectKind::App => dir.join(&name),
+            ProjectKind::Service | ProjectKind::Utility | ProjectKind::App | ProjectKind::Driver => dir.join(&name),
             ProjectKind::Library => dir.join(format!("lib{}.rlib", name.replace('-', "_"))),
         };
         if !artifact.is_file() {

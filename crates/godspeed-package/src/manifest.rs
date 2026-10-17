@@ -36,6 +36,10 @@ pub enum Kind {
     /// A utility that owns the screen and the keyboard while it runs (GodspeedOS `gs::app`, the console
     /// foreground). The operator approves the console at install; when it ends the shell has the console back.
     App,
+    /// A service that drives one device: its contract names the device by PCI class code and register window
+    /// (`hw_pci_class`, `hw_pci_bar`), never an address. The operator approves the device at install, and the
+    /// OS resolves which device that is against its own bus scan.
+    Driver,
 }
 
 impl Kind {
@@ -45,6 +49,7 @@ impl Kind {
             Kind::Service => "service",
             Kind::Utility => "utility",
             Kind::App => "app",
+            Kind::Driver => "driver",
         }
     }
 }

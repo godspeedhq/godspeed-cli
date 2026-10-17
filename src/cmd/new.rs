@@ -113,6 +113,37 @@ const APP: &[File] = &[
     },
 ];
 
+const DRIVER: &[File] = &[
+    File {
+        path: "godspeed.toml",
+        body: include_str!("../../templates/driver/godspeed.toml"),
+    },
+    File {
+        path: "Cargo.toml",
+        body: include_str!("../../templates/service/Cargo.toml.template"),
+    },
+    File {
+        path: "contracts/{{name}}.toml",
+        body: include_str!("../../templates/driver/contracts/contract.toml"),
+    },
+    File {
+        path: "src/main.rs",
+        body: include_str!("../../templates/driver/src/main.rs"),
+    },
+    File {
+        path: "README.md",
+        body: include_str!("../../templates/driver/README.md"),
+    },
+    File {
+        path: "rust-toolchain.toml",
+        body: TOOLCHAIN,
+    },
+    File {
+        path: ".gitignore",
+        body: GITIGNORE,
+    },
+];
+
 const LIBRARY: &[File] = &[
     File {
         path: "godspeed.toml",
@@ -140,17 +171,12 @@ const LIBRARY: &[File] = &[
     },
 ];
 
-/// Kinds the CLI knows and the OS cannot run yet: why, and where the OS tracks it.
+/// Kinds the CLI knows and the OS cannot run yet: why, and where the OS tracks it. Empty since 2026-10-17, when
+/// `driver` joined `service`, `utility` and `app`; kept, so the next kind the OS cannot run is refused with a reason.
 const NOT_YET: &[(&str, &str, &str)] = &[
-    (
-        "driver",
-        "A driver needs a device granted to it. GodspeedOS grants devices only from the supervisor's own \
-      compiled spawn rows, so a driver outside the OS tree cannot be given one.",
-        "the supervisor's spawn rows, by device kind (GodspeedOS services/supervisor)",
-    ),
 ];
 
-const KINDS: &str = "service, utility, app, library (and later: driver)";
+const KINDS: &str = "service, utility, app, driver, library";
 
 pub fn run(
     platform: &Platform,
@@ -163,6 +189,7 @@ pub fn run(
         "service" => ProjectKind::Service,
         "utility" => ProjectKind::Utility,
         "app" => ProjectKind::App,
+        "driver" => ProjectKind::Driver,
         "library" => ProjectKind::Library,
         other => {
             if let Some((k, why, tracked)) = NOT_YET.iter().find(|(k, ..)| *k == other) {
@@ -208,6 +235,7 @@ pub fn run(
         ProjectKind::Service => SERVICE,
         ProjectKind::Utility => UTILITY,
         ProjectKind::App => APP,
+        ProjectKind::Driver => DRIVER,
         ProjectKind::Library => LIBRARY,
     };
     let targets = platform

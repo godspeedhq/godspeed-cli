@@ -24,6 +24,8 @@ pub enum ProjectKind {
     Utility,
     /// A utility that has the screen and the keyboard while it runs (`gs::app`).
     App,
+    /// A service that drives one device, named by its PCI class in the contract.
+    Driver,
     Library,
 }
 
@@ -33,13 +35,14 @@ impl ProjectKind {
             ProjectKind::Service => "service",
             ProjectKind::Utility => "utility",
             ProjectKind::App => "app",
+            ProjectKind::Driver => "driver",
             ProjectKind::Library => "library",
         }
     }
 
     /// Is this a program GodspeedOS runs - built to an image, with a contract - rather than a library?
     pub fn runs(self) -> bool {
-        matches!(self, ProjectKind::Service | ProjectKind::Utility | ProjectKind::App)
+        matches!(self, ProjectKind::Service | ProjectKind::Utility | ProjectKind::App | ProjectKind::Driver)
     }
 }
 
@@ -108,17 +111,18 @@ impl Project {
             "service" => ProjectKind::Service,
             "utility" => ProjectKind::Utility,
             "app" => ProjectKind::App,
+            "driver" => ProjectKind::Driver,
             "library" => ProjectKind::Library,
             other => {
                 return Err(
                     invalid("read the project", format!("{MANIFEST} names kind \"{other}\"."))
-                        .expected("\"service\", \"utility\", \"app\" or \"library\" - the kinds GodspeedOS can build today"),
+                        .expected("\"service\", \"utility\", \"app\", \"driver\" or \"library\" - the kinds GodspeedOS can build today"),
                 );
             }
         };
         let contract = match (kind, raw.contract) {
-            (ProjectKind::Service | ProjectKind::Utility | ProjectKind::App, Some(c)) => Some(PathBuf::from(c)),
-            (ProjectKind::Service | ProjectKind::Utility | ProjectKind::App, None) => {
+            (ProjectKind::Service | ProjectKind::Utility | ProjectKind::App | ProjectKind::Driver, Some(c)) => Some(PathBuf::from(c)),
+            (ProjectKind::Service | ProjectKind::Utility | ProjectKind::App | ProjectKind::Driver, None) => {
                 return Err(
                     invalid("read the project", format!("{MANIFEST} is a service with no contract."))
                         .expected("contract = \"contracts/<name>.toml\": a service declares the authority it requests"),

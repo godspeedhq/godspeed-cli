@@ -156,19 +156,18 @@ fn new_library_creates_a_project_that_checks_clean() {
 }
 
 #[test]
-fn kinds_the_os_cannot_run_are_refused_with_the_reason() {
+fn every_kind_is_made_and_an_unknown_one_is_refused() {
+    // Every kind GodspeedOS runs has a template now: service, utility, app and driver (and library). A kind that
+    // is not one of them is refused and writes nothing.
     let dir = scratch("kinds");
     let os = fixture_os();
-    for (kind, mentions) in [
-        ("driver", "device"),
-    ] {
-        let o = godspeed(&dir, Some(&os), &["new", kind, "x"]);
-        assert_eq!(code(&o), 20, "{kind}");
-        assert!(stderr(&o).contains(mentions), "{kind}: {}", stderr(&o));
-        assert!(!dir.join("x").exists(), "{kind}: a refused kind must write nothing");
-    }
+    let o = godspeed(&dir, Some(&os), &["new", "driver", "drv"]);
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    let contract = std::fs::read_to_string(dir.join("drv").join("contracts").join("drv.toml")).unwrap_or_default();
+    assert!(contract.contains("hw_pci_class"), "a driver's contract names its device by class");
     let o = godspeed(&dir, Some(&os), &["new", "widget", "x"]);
     assert_eq!(code(&o), 10);
+    assert!(!dir.join("x").exists(), "a refused kind must write nothing");
 }
 
 #[test]
