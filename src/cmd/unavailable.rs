@@ -35,8 +35,7 @@ pub fn native(verb: &str) -> Diagnostic {
         ),
     )
     .next(format!(
-        "Run it on the Godspeed machine. (The native package manager is not built yet: GodspeedOS cannot \
-               start a program it did not ship with.){}",
+        "Run it on the Godspeed machine, at its `gsh>` prompt: `godspeed {verb}` there.{}",
         match verb {
             "update" | "uninstall" => format!(" To {verb} this CLI itself: `godspeed self {verb}`."),
             _ => String::new(),
