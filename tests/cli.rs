@@ -641,6 +641,43 @@ fn fetch_from_an_unreachable_registry_says_so_and_trusts_nothing() {
 }
 
 #[test]
+fn a_package_file_must_be_named_gsp_and_carry_a_real_architecture() {
+    let dir = scratch("fetch_gsp_args");
+    let reg = ["--registry", "http://127.0.0.1:9"];
+    for (args, says) in [
+        (
+            vec!["fetch", "alice/hello", "--gsp", "hello.zip"],
+            "does not end in .gsp",
+        ),
+        (
+            vec!["fetch", "alice/hello", "--gsp", "hello.gsp", "--arch", "sparc"],
+            "not an architecture",
+        ),
+    ] {
+        let all: Vec<&str> = args.iter().copied().chain(reg).collect();
+        let o = godspeed(&dir, None, &all);
+        assert_eq!(code(&o), 10, "{args:?}: {}", stderr(&o));
+        assert!(stderr(&o).contains(says), "{args:?}: {}", stderr(&o));
+    }
+    let o = godspeed(&dir, None, &["fetch", "alice/hello", "--arch", "x86_64"]);
+    assert_ne!(code(&o), 0, "--arch means nothing without --gsp");
+    let o = godspeed(
+        &dir,
+        None,
+        &[
+            "fetch",
+            "alice/hello",
+            "--gsp",
+            "hello.gsp",
+            "--registry",
+            "http://127.0.0.1:9",
+        ],
+    );
+    assert_eq!(code(&o), 19, "{}", stderr(&o));
+    assert!(!dir.join("hello.gsp").exists(), "no file from a registry never reached");
+}
+
+#[test]
 fn a_bad_signing_key_in_the_environment_is_refused() {
     let dir = write_package("bad_seed");
     let mut c = command(dir.parent().unwrap(), None, &["sign", dir.to_str().unwrap()]);

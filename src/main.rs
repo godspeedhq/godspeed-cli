@@ -18,7 +18,7 @@ mod target;
 mod update;
 
 use clap::{Parser, Subcommand};
-use diag::Diagnostic;
+use diag::{Diagnostic, Kind, Stage};
 use platform::{Platform, Want};
 use project::Project;
 use std::path::{Path, PathBuf};
@@ -107,6 +107,12 @@ enum Command {
         /// On first contact with a registry, trust its root 1 only if it has this digest (sha256:...)
         #[arg(long, value_name = "DIGEST")]
         trust_root: Option<String>,
+        /// Write it as one Godspeed package file instead, which a machine installs with no network
+        #[arg(long, value_name = "FILE", conflicts_with = "out")]
+        gsp: Option<PathBuf>,
+        /// With --gsp: the binary to carry - x86_64 | aarch64 | armv7 | riscv64 | all (default all)
+        #[arg(long, value_name = "ARCH", requires = "gsp")]
+        arch: Option<String>,
         /// Print the result as JSON
         #[arg(long)]
         json: bool,
@@ -355,8 +361,45 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
             package,
             out,
             trust_root,
+            gsp,
+            arch,
             json,
-        } => cmd::fetch::run(&package, reg, out.as_deref(), trust_root.as_deref(), json),
+        } => {
+            let gsp = match gsp {
+                None => None,
+                Some(file) => {
+                    if file.extension().and_then(|e| e.to_str()) != Some("gsp") {
+                        return Err(Diagnostic::new(
+                            Kind::InvalidProject,
+                            Stage::Validation,
+                            format!("fetch {package}"),
+                            format!("{} does not end in .gsp.", file.display()),
+                        )
+                        .next("A Godspeed machine installs a package file by that name: hello.gsp, say.")
+                        .into());
+                    }
+                    let arches = match arch.as_deref() {
+                        None | Some("all") => cmd::fetch::Arches::All,
+                        Some(a) => match a.parse::<godspeed_package::Arch>() {
+                            Ok(a) => cmd::fetch::Arches::One(a.as_str().to_string()),
+                            Err(_) => {
+                                return Err(Diagnostic::new(
+                                    Kind::InvalidProject,
+                                    Stage::Validation,
+                                    format!("fetch {package}"),
+                                    format!("\"{a}\" is not an architecture."),
+                                )
+                                .expected("x86_64, aarch64, armv7, riscv64 or all")
+                                .into())
+                            }
+                        },
+                    };
+                    Some((file, arches))
+                }
+            };
+            let gsp = gsp.as_ref().map(|(f, a)| (f.as_path(), a.clone()));
+            cmd::fetch::run(&package, reg, out.as_deref(), trust_root.as_deref(), gsp, json)
+        }
         Command::Key { action } => match action {
             KeyAction::Generate => cmd::sign::key_generate(),
             KeyAction::Show => cmd::sign::key_show(),

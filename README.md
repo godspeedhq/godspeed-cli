@@ -214,6 +214,17 @@ before installing: root (built in for the official registry; for another, truste
 you pin it with `--trust-root`), timestamp, snapshot,
 namespaces, index, manifest, signature, files ([docs/trust-metadata.md](docs/trust-metadata.md)).
 
+**A package for a machine with no network** travels as one file:
+
+    godspeed fetch godspeed/hello --gsp hello.gsp [--arch x86_64|aarch64|armv7|riscv64|all]
+
+A `.gsp` holds every document that fetch read and checked - the roots from root 1, the timestamp, snapshot,
+namespaces, the package's index, its manifest, signature and contract, and its binaries (all of them, or the
+one `--arch` names) - under the paths the registry serves them at, so a machine checks it exactly as it
+checks the registry, from the root it already trusts. Only a published release can become one. Installing
+from a `.gsp` on the machine (`godspeed install hello.gsp`) is being built in GodspeedOS; its design, with
+what a file this old can and cannot prove, is GodspeedOS `docs/developer-services-design.md` 15.
+
 ## Other languages
 
 **Today a Godspeed program is Rust, and the CLI builds Rust.** Not because the CLI insists - the package

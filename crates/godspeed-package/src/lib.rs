@@ -34,6 +34,7 @@ extern crate std;
 
 mod arch;
 mod digest;
+pub mod gsp;
 mod hex;
 mod index;
 mod manifest;

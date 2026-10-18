@@ -128,10 +128,31 @@ impl TrustState {
     }
 }
 
-fn text(client: &Client, doing: &str, path: &str, limit: u64) -> std::result::Result<Option<String>, Diagnostic> {
-    match client.get(path, limit) {
+/// Documents read from the registry, each under the path it was read at.
+type Kept = Vec<(String, Vec<u8>)>;
+
+/// The registry, and - when a `.gsp` is being made - every document read from it, under the path it was read at.
+struct Source<'a> {
+    client: &'a Client,
+    kept: Option<std::cell::RefCell<Kept>>,
+}
+
+impl Source<'_> {
+    fn keep(&self, path: &str, bytes: &[u8]) {
+        if let Some(kept) = &self.kept {
+            let mut kept = kept.borrow_mut();
+            if !kept.iter().any(|(p, _)| p == path) {
+                kept.push((path.to_string(), bytes.to_vec()));
+            }
+        }
+    }
+}
+
+fn text(src: &Source, doing: &str, path: &str, limit: u64) -> std::result::Result<Option<String>, Diagnostic> {
+    match src.client.get(path, limit) {
         Answer::Done(None) => Ok(None),
         Answer::Done(Some(b)) => String::from_utf8(b)
+            .inspect(|t| src.keep(path, t.as_bytes()))
             .map(Some)
             .map_err(|_| untrusted(doing, TrustError::Malformed("a document is not UTF-8"))),
         Answer::Refused(r) => Err(registry::unreachable(doing, Stage::Verification, &r.message)),
@@ -139,8 +160,8 @@ fn text(client: &Client, doing: &str, path: &str, limit: u64) -> std::result::Re
     }
 }
 
-fn required(client: &Client, doing: &str, path: &str, limit: u64) -> std::result::Result<String, Diagnostic> {
-    text(client, doing, path, limit)?.ok_or_else(|| {
+fn required(src: &Source, doing: &str, path: &str, limit: u64) -> std::result::Result<String, Diagnostic> {
+    text(src, doing, path, limit)?.ok_or_else(|| {
         Diagnostic::new(
             Kind::Untrusted,
             Stage::Verification,
@@ -151,7 +172,25 @@ fn required(client: &Client, doing: &str, path: &str, limit: u64) -> std::result
     })
 }
 
-pub fn run(spec: &str, registry_flag: Option<&str>, out: Option<&Path>, pin: Option<&str>, json: bool) -> Result<()> {
+/// Which binaries a `.gsp` carries.
+#[derive(Clone)]
+pub enum Arches {
+    /// Every architecture the release was built for.
+    All,
+    /// One, named as the manifest names it (`x86_64`, `aarch64`, ...).
+    One(String),
+}
+
+/// Fetch a release and verify it, into a directory - or, with `gsp`, into one `.gsp` file holding every document
+/// the fetch read, which a Godspeed machine can install from with no network.
+pub fn run(
+    spec: &str,
+    registry_flag: Option<&str>,
+    out: Option<&Path>,
+    pin: Option<&str>,
+    gsp: Option<(&Path, Arches)>,
+    json: bool,
+) -> Result<()> {
     let (name_text, wanted) = match spec.split_once('@') {
         Some((n, v)) => (n, Some(v)),
         None => (spec, None),
@@ -180,6 +219,10 @@ pub fn run(spec: &str, registry_flag: Option<&str>, out: Option<&Path>, pin: Opt
     let creds = Credentials::load()?;
     let url = registry::resolve(registry_flag, &creds)?;
     let client = Client::new(&url, None);
+    let src = Source {
+        client: &client,
+        kept: gsp.is_some().then(Default::default),
+    };
     let now = now_utc();
     let fail = |e: TrustError| untrusted(&doing, e);
 
@@ -188,8 +231,8 @@ pub fn run(spec: &str, registry_flag: Option<&str>, out: Option<&Path>, pin: Opt
     let mut state = match TrustState::load(&url)? {
         Some(s) => s,
         None => {
-            let first = required(&client, &doing, "trust/root/1.toml", METADATA_LIMIT)?;
-            let sig = required(&client, &doing, "trust/root/1.sig", METADATA_LIMIT)?;
+            let first = required(&src, &doing, "trust/root/1.toml", METADATA_LIMIT)?;
+            let sig = required(&src, &doing, "trust/root/1.sig", METADATA_LIMIT)?;
             let digest = Sha256Digest::of(first.as_bytes());
             // The official registry's root is pinned in this binary; any other is trusted on first use.
             let built_in = (url == registry::OFFICIAL).then_some(registry::OFFICIAL_ROOT);
@@ -223,40 +266,37 @@ pub fn run(spec: &str, registry_flag: Option<&str>, out: Option<&Path>, pin: Opt
     loop {
         let current = Root::parse(&state.root).map_err(fail)?;
         let next_version = current.header.version + 1;
-        let Some(next) = text(
-            &client,
-            &doing,
-            &format!("trust/root/{next_version}.toml"),
-            METADATA_LIMIT,
-        )?
-        else {
+        let Some(next) = text(&src, &doing, &format!("trust/root/{next_version}.toml"), METADATA_LIMIT)? else {
             break;
         };
-        let sig = required(
-            &client,
-            &doing,
-            &format!("trust/root/{next_version}.sig"),
-            METADATA_LIMIT,
-        )?;
+        let sig = required(&src, &doing, &format!("trust/root/{next_version}.sig"), METADATA_LIMIT)?;
         trust::verify_next_root(&current, &next, &sig).map_err(fail)?;
         state.root = next;
     }
     let root = Root::parse(&state.root).map_err(fail)?;
     root.header.check_fresh(&now).map_err(fail)?;
+    if src.kept.is_some() {
+        // A machine that has never been online trusts only root 1: the file carries every root from there.
+        for v in 1..=root.header.version {
+            for ext in ["toml", "sig"] {
+                required(&src, &doing, &format!("trust/root/{v}.{ext}"), METADATA_LIMIT)?;
+            }
+        }
+    }
 
     // 2. Timestamp -> snapshot -> namespaces -> the package's index.
-    let ts = required(&client, &doing, "trust/timestamp.toml", METADATA_LIMIT)?;
-    let ts_sig = required(&client, &doing, "trust/timestamp.sig", METADATA_LIMIT)?;
+    let ts = required(&src, &doing, "trust/timestamp.toml", METADATA_LIMIT)?;
+    let ts_sig = required(&src, &doing, "trust/timestamp.sig", METADATA_LIMIT)?;
     let timestamp = trust::verify_timestamp(&root, &ts, &ts_sig, &now, state.timestamp_version).map_err(fail)?;
-    let snap = required(&client, &doing, "trust/snapshot.toml", METADATA_LIMIT)?;
-    let snap_sig = required(&client, &doing, "trust/snapshot.sig", METADATA_LIMIT)?;
+    let snap = required(&src, &doing, "trust/snapshot.toml", METADATA_LIMIT)?;
+    let snap_sig = required(&src, &doing, "trust/snapshot.sig", METADATA_LIMIT)?;
     let snapshot = trust::verify_snapshot(&root, &timestamp, &snap, &snap_sig, &now).map_err(fail)?;
-    let ns = required(&client, &doing, "trust/namespaces.toml", METADATA_LIMIT)?;
-    let ns_sig = required(&client, &doing, "trust/namespaces.sig", METADATA_LIMIT)?;
+    let ns = required(&src, &doing, "trust/namespaces.toml", METADATA_LIMIT)?;
+    let ns_sig = required(&src, &doing, "trust/namespaces.sig", METADATA_LIMIT)?;
     let namespaces =
         trust::verify_namespaces(&root, &snapshot, &ns, &ns_sig, &now, state.namespaces_version).map_err(fail)?;
     let index_path = format!("index/{}/{}.toml", name.publisher(), name.name());
-    let Some(index_text) = text(&client, &doing, &index_path, METADATA_LIMIT)? else {
+    let Some(index_text) = text(&src, &doing, &index_path, METADATA_LIMIT)? else {
         return Err(Diagnostic::new(
             Kind::NotFound,
             Stage::Verification,
@@ -306,11 +346,11 @@ pub fn run(spec: &str, registry_flag: Option<&str>, out: Option<&Path>, pin: Opt
     };
     let version = release.version;
     let base = format!("packages/{}/{}/{version}", name.publisher(), name.name());
-    let manifest_text = required(&client, &doing, &format!("{base}/manifest.toml"), METADATA_LIMIT)?;
+    let manifest_text = required(&src, &doing, &format!("{base}/manifest.toml"), METADATA_LIMIT)?;
     if Sha256Digest::of(manifest_text.as_bytes()) != release.manifest {
         return Err(fail(TrustError::DigestMismatch("the manifest")).into());
     }
-    let sig_text = required(&client, &doing, &format!("{base}/{SIGNATURE_FILE}"), METADATA_LIMIT)?;
+    let sig_text = required(&src, &doing, &format!("{base}/{SIGNATURE_FILE}"), METADATA_LIMIT)?;
     let signature = ManifestSignature::parse(&sig_text)
         .and_then(|s| s.verify(manifest_text.as_bytes()).map(|()| s))
         .map_err(|e| {
@@ -336,9 +376,32 @@ pub fn run(spec: &str, registry_flag: Option<&str>, out: Option<&Path>, pin: Opt
         )
     })?;
     let manifest = owned.manifest();
-    let dest = out
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| PathBuf::from(format!("{}-{}-{version}", name.publisher(), name.name())));
+    if let Some((_, Arches::One(want))) = &gsp {
+        if !manifest.artifacts.iter().any(|a| a.arch.as_str() == want) {
+            return Err(Diagnostic::new(
+                Kind::NotFound,
+                Stage::Verification,
+                doing.clone(),
+                format!("{name}@{version} has no binary for {want}."),
+            )
+            .next(format!(
+                "It was built for: {}. Name one of them with --arch, or all.",
+                manifest
+                    .artifacts
+                    .iter()
+                    .map(|a| a.arch.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ))
+            .into());
+        }
+    }
+    let dest = match &gsp {
+        Some((file, _)) => file.to_path_buf(),
+        None => out
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from(format!("{}-{}-{version}", name.publisher(), name.name()))),
+    };
     if dest.exists() {
         return Err(Diagnostic::new(
             Kind::Io,
@@ -381,7 +444,15 @@ pub fn run(spec: &str, registry_flag: Option<&str>, out: Option<&Path>, pin: Opt
             Answer::Unknown(why) => return Err(registry::unreachable(&doing, Stage::Verification, &why).into()),
         };
         let path = staging.join(file);
-        std::fs::write(&path, bytes).map_err(|e| Diagnostic::io(&doing, &path, &e))?;
+        std::fs::write(&path, &bytes).map_err(|e| Diagnostic::io(&doing, &path, &e))?;
+        // A binary goes into a `.gsp` only for the architectures asked for; the contract always does.
+        let wanted = match &gsp {
+            Some((_, Arches::One(want))) => file == pkg::CONTRACT_FILE || *file == format!("{want}.elf"),
+            _ => true,
+        };
+        if wanted {
+            src.keep(&format!("{base}/{file}"), &bytes);
+        }
     }
     for (file, text) in [(verify::MANIFEST_FILE, &manifest_text), (SIGNATURE_FILE, &sig_text)] {
         let path = staging.join(file);
@@ -394,7 +465,22 @@ pub fn run(spec: &str, registry_flag: Option<&str>, out: Option<&Path>, pin: Opt
             return Err(problems);
         }
     };
-    std::fs::rename(&staging, &dest).map_err(|e| Diagnostic::io(&doing, &dest, &e))?;
+    if let Some(kept) = &src.kept {
+        // Every document the fetch read and checked, under the path the registry serves it at.
+        let kept = kept.borrow();
+        let entries: Vec<(&str, &[u8])> = kept.iter().map(|(p, b)| (p.as_str(), b.as_slice())).collect();
+        let partial = dest.with_extension("gsp.partial");
+        let written = std::fs::File::create(&partial).and_then(|f| {
+            let mut w = std::io::BufWriter::new(f);
+            pkg::gsp::write(&mut w, &entries)?;
+            std::io::Write::flush(&mut w)
+        });
+        let _ = std::fs::remove_dir_all(&staging);
+        written.map_err(|e| Diagnostic::io(&doing, &partial, &e))?;
+        std::fs::rename(&partial, &dest).map_err(|e| Diagnostic::io(&doing, &dest, &e))?;
+    } else {
+        std::fs::rename(&staging, &dest).map_err(|e| Diagnostic::io(&doing, &dest, &e))?;
+    }
 
     let retired = match namespaces.status(name.publisher(), &signature.key) {
         Some(trust::KeyStatus::Retired(at)) => Some(at.to_string()),
@@ -405,6 +491,7 @@ pub fn run(spec: &str, registry_flag: Option<&str>, out: Option<&Path>, pin: Opt
             "name": name.to_string(),
             "version": version.to_string(),
             "dir": dest.display().to_string(),
+            "gsp": gsp.is_some(),
             "registry": url,
             "verified": {
                 "root": root.header.version,
@@ -426,7 +513,18 @@ pub fn run(spec: &str, registry_flag: Option<&str>, out: Option<&Path>, pin: Opt
         ),
         None => format!("an active key of {}/", name.publisher()),
     };
-    println!("Fetched {name}@{version} into {}", dest.display());
+    if gsp.is_some() {
+        println!("Wrote {name}@{version} to {}", dest.display());
+        println!(
+            "  copy it to a Godspeed machine and run: godspeed install {}",
+            dest.file_name()
+                .map(|f| f.to_string_lossy().into_owned())
+                .unwrap_or_default()
+        );
+        println!("  checked against the registry as of {now}; a machine trusts it for as long as its settings allow");
+    } else {
+        println!("Fetched {name}@{version} into {}", dest.display());
+    }
     println!(
         "  verified: root {} -> timestamp {} -> snapshot {} -> namespaces {} -> index -> manifest -> files",
         root.header.version, timestamp.header.version, snapshot.header.version, namespaces.header.version
