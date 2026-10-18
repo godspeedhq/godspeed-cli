@@ -30,6 +30,60 @@ fn replaceable(dir: &Path) -> bool {
         .all(|e| allowed.contains(&e.file_name().to_string_lossy().as_ref()))
 }
 
+/// Write the signed package in `dir` as one UNPUBLISHED package file, `<name>-<version>.gsp` in `folder`: its
+/// manifest, signature, contract and binaries, under the paths the registry would serve them at, and no registry
+/// documents at all - nothing has vouched for it but its signature. A Godspeed machine installs it only if its
+/// operator trusts the signing key for this publisher (`godspeed trust add`), so the file says nothing a registry
+/// would. The path written.
+pub fn write_gsp(dir: &Path, folder: &Path) -> Result<PathBuf> {
+    let headline = "write the package file";
+    let read = |f: &str| std::fs::read(dir.join(f)).map_err(|e| Diagnostic::io(headline, &dir.join(f), &e));
+    let manifest_bytes = read(verify::MANIFEST_FILE)?;
+    let text = std::str::from_utf8(&manifest_bytes).map_err(|_| {
+        refuse(
+            Kind::InvalidPackage,
+            headline,
+            format!("{} is not text", verify::MANIFEST_FILE),
+        )
+    })?;
+    let owned = pkg::parse(text).map_err(|e| {
+        refuse(
+            Kind::InvalidPackage,
+            headline,
+            format!("{}: {e:?}", verify::MANIFEST_FILE),
+        )
+    })?;
+    let m = owned.manifest();
+    let base = format!("packages/{}/{}/{}", m.name.publisher(), m.name.name(), m.version);
+    let leaf = format!("{}-{}.gsp", m.name.name(), m.version);
+    let file = if folder == Path::new(".") {
+        PathBuf::from(leaf)
+    } else {
+        folder.join(leaf)
+    };
+    let file = file.as_path();
+    let mut docs: Vec<(String, Vec<u8>)> = vec![(format!("{base}/{}", verify::MANIFEST_FILE), manifest_bytes.clone())];
+    docs.push((format!("{base}/{}", pkg::SIGNATURE_FILE), read(pkg::SIGNATURE_FILE)?));
+    docs.push((format!("{base}/{CONTRACT_FILE}"), read(CONTRACT_FILE)?));
+    for a in m.artifacts {
+        docs.push((
+            format!("{base}/{}", a.arch.artifact_file()),
+            read(a.arch.artifact_file())?,
+        ));
+    }
+    let entries: Vec<(&str, &[u8])> = docs.iter().map(|(p, b)| (p.as_str(), b.as_slice())).collect();
+    let partial = file.with_extension("gsp.partial");
+    std::fs::File::create(&partial)
+        .and_then(|f| {
+            let mut w = std::io::BufWriter::new(f);
+            pkg::gsp::write(&mut w, &entries)?;
+            std::io::Write::flush(&mut w)
+        })
+        .and_then(|()| std::fs::rename(&partial, file))
+        .map_err(|e| Diagnostic::io(headline, file, &e))?;
+    Ok(file.to_path_buf())
+}
+
 pub fn run(platform: &Platform, project: &Project, arches: &[&'static Arch], out: Option<&Path>) -> Result<PathBuf> {
     let headline = "package the project";
     if !project.kind.runs() {

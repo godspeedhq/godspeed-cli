@@ -216,15 +216,24 @@ namespaces, index, manifest, signature, files ([docs/trust-metadata.md](docs/tru
 
 **A package for a machine with no network** travels as one file:
 
-    godspeed fetch godspeed/hello --gsp hello.gsp [--arch x86_64|aarch64|armv7|riscv64|all]
+    godspeed fetch godspeed/hello --offline [--arch x86_64|aarch64|armv7|riscv64|all]
 
-A `.gsp` holds every document that fetch read and checked - the roots from root 1, the timestamp, snapshot,
-namespaces, the package's index, its manifest, signature and contract, and its binaries (all of them, or the
-one `--arch` names) - under the paths the registry serves them at, so a machine checks it exactly as it
-checks the registry, from the root it already trusts. Only a published release can become one. `godspeed inspect hello.gsp` checks a file the same way, with no
-network, and keeps nothing; `godspeed inspect godspeed/hello` does it against the registry. Installing
-from a `.gsp` on the machine (`godspeed install hello.gsp`) is being built in GodspeedOS; its design, with
-what a file this old can and cannot prove, is GodspeedOS `docs/developer-services-design.md` 15.
+writes `hello-0.3.0.gsp`: every document that fetch read and checked - the roots from root 1, the timestamp,
+snapshot, namespaces, the package's index, its manifest, signature and contract, and its binaries (all of them, or
+the one `--arch` names) - under the paths the registry serves them at, so a machine checks it exactly as it
+checks the registry, from the root it already trusts. On the machine, `godspeed install hello-0.3.0.gsp`.
+
+**A package that was never published** - built on a machine with no network, say - is
+
+    godspeed package --local
+
+which builds, signs with your key and writes `<name>-<version>.gsp`. No registry vouches for it, so a machine
+installs it only after its operator trusts your key for your publisher name, once: `godspeed trust add <publisher>
+<key>`, which the command prints.
+
+`godspeed inspect <file>.gsp` checks either kind with no network and keeps nothing; `godspeed inspect
+godspeed/hello` does it against the registry. The design, with what a file can and cannot prove, is GodspeedOS
+`docs/developer-services-design.md` 15.
 
 ## Other languages
 

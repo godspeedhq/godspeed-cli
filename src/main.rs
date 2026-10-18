@@ -88,6 +88,10 @@ enum Command {
         /// Write the package here (default: target/package/<publisher>-<name>-<version>)
         #[arg(long, value_name = "PATH")]
         out: Option<PathBuf>,
+        /// Also sign it with your key and write it as one file, <name>-<version>.gsp here, for a machine whose
+        /// operator trusts your key (`godspeed trust add` there): no registry and no network on either side
+        #[arg(long)]
+        local: bool,
         /// Print the result as JSON
         #[arg(long)]
         json: bool,
@@ -101,17 +105,17 @@ enum Command {
     Fetch {
         /// publisher/name, optionally @version (default: the highest published)
         package: String,
-        /// Write it here (default: ./<publisher>-<name>-<version>)
+        /// Write it here (default: ./<publisher>-<name>-<version>; with --offline, the folder for its file)
         #[arg(long, value_name = "PATH")]
         out: Option<PathBuf>,
         /// On first contact with a registry, trust its root 1 only if it has this digest (sha256:...)
         #[arg(long, value_name = "DIGEST")]
         trust_root: Option<String>,
-        /// Write it as one Godspeed package file instead, which a machine installs with no network
-        #[arg(long, value_name = "FILE", conflicts_with = "out")]
-        gsp: Option<PathBuf>,
-        /// With --gsp: the binary to carry - x86_64 | aarch64 | armv7 | riscv64 | all (default all)
-        #[arg(long, value_name = "ARCH", requires = "gsp")]
+        /// Write it as one file, <name>-<version>.gsp, that a machine with no network installs
+        #[arg(long)]
+        offline: bool,
+        /// With --offline: the binary to carry - x86_64 | aarch64 | armv7 | riscv64 | all (default all)
+        #[arg(long, value_name = "ARCH", requires = "offline")]
         arch: Option<String>,
         /// Print the result as JSON
         #[arg(long)]
@@ -352,11 +356,19 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
             .expected("qemu or hardware")
             .into()),
         },
-        Command::Package { arch, out, json } => {
+        Command::Package { arch, out, local, json } => {
             let project = current_project()?;
             let platform = Platform::locate(os, Want::Project(&project))?;
             let arches = cmd::build::select(&platform, arch.as_deref(), arch.is_none())?;
             let dir = cmd::package::run(&platform, &project, &arches, out.as_deref())?;
+            // AN UNPUBLISHED PACKAGE FILE: signed here, with the key a machine's operator is asked to trust.
+            let signer = if local {
+                let key = signing::load()?;
+                let public = cmd::sign::sign_dir(&dir, &key)?;
+                Some((cmd::package::write_gsp(&dir, Path::new("."))?, public))
+            } else {
+                None
+            };
             let verified = cmd::verify::run(&dir)?;
             if json {
                 let mut doc = cmd::verify::to_json(&verified);
@@ -365,6 +377,23 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
             } else {
                 cmd::verify::report(&verified);
                 println!("Packaged in {}", dir.display());
+                if let Some((file, public)) = signer {
+                    let m = verified.manifest.manifest();
+                    println!(
+                        "Wrote {}@{} to {}, UNPUBLISHED: no registry vouches for it",
+                        m.name,
+                        m.version,
+                        file.display()
+                    );
+                    println!("  on the machine, trust your key for {} once:", m.name.publisher());
+                    println!("    godspeed trust add {} {public}", m.name.publisher());
+                    println!(
+                        "  then: godspeed install {}",
+                        file.file_name()
+                            .map(|f| f.to_string_lossy().into_owned())
+                            .unwrap_or_default()
+                    );
+                }
             }
             Ok(())
         }
@@ -373,23 +402,13 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
             package,
             out,
             trust_root,
-            gsp,
+            offline,
             arch,
             json,
         } => {
-            let gsp = match gsp {
-                None => None,
-                Some(file) => {
-                    if file.extension().and_then(|e| e.to_str()) != Some("gsp") {
-                        return Err(Diagnostic::new(
-                            Kind::InvalidProject,
-                            Stage::Validation,
-                            format!("fetch {package}"),
-                            format!("{} does not end in .gsp.", file.display()),
-                        )
-                        .next("A Godspeed machine installs a package file by that name: hello.gsp, say.")
-                        .into());
-                    }
+            let offline = match offline {
+                false => None,
+                true => {
                     let arches = match arch.as_deref() {
                         None | Some("all") => cmd::fetch::Arches::All,
                         Some(a) => match a.parse::<godspeed_package::Arch>() {
@@ -406,11 +425,18 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
                             }
                         },
                     };
-                    Some((file, arches))
+                    Some(arches)
                 }
             };
-            let gsp = gsp.as_ref().map(|(f, a)| (f.as_path(), a.clone()));
-            cmd::fetch::run(&package, reg, out.as_deref(), trust_root.as_deref(), gsp, None, json)
+            cmd::fetch::run(
+                &package,
+                reg,
+                out.as_deref(),
+                trust_root.as_deref(),
+                offline,
+                None,
+                json,
+            )
         }
         Command::Key { action } => match action {
             KeyAction::Generate => cmd::sign::key_generate(),

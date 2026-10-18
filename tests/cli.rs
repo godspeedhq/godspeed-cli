@@ -641,40 +641,37 @@ fn fetch_from_an_unreachable_registry_says_so_and_trusts_nothing() {
 }
 
 #[test]
-fn a_package_file_must_be_named_gsp_and_carry_a_real_architecture() {
-    let dir = scratch("fetch_gsp_args");
-    let reg = ["--registry", "http://127.0.0.1:9"];
-    for (args, says) in [
-        (
-            vec!["fetch", "alice/hello", "--gsp", "hello.zip"],
-            "does not end in .gsp",
-        ),
-        (
-            vec!["fetch", "alice/hello", "--gsp", "hello.gsp", "--arch", "sparc"],
-            "not an architecture",
-        ),
-    ] {
-        let all: Vec<&str> = args.iter().copied().chain(reg).collect();
-        let o = godspeed(&dir, None, &all);
-        assert_eq!(code(&o), 10, "{args:?}: {}", stderr(&o));
-        assert!(stderr(&o).contains(says), "{args:?}: {}", stderr(&o));
-    }
-    let o = godspeed(&dir, None, &["fetch", "alice/hello", "--arch", "x86_64"]);
-    assert_ne!(code(&o), 0, "--arch means nothing without --gsp");
+fn an_offline_file_must_carry_a_real_architecture_and_is_never_half_written() {
+    let dir = scratch("fetch_offline_args");
     let o = godspeed(
         &dir,
         None,
         &[
             "fetch",
             "alice/hello",
-            "--gsp",
-            "hello.gsp",
+            "--offline",
+            "--arch",
+            "sparc",
             "--registry",
             "http://127.0.0.1:9",
         ],
     );
+    assert_eq!(code(&o), 10, "{}", stderr(&o));
+    assert!(stderr(&o).contains("not an architecture"), "{}", stderr(&o));
+    let o = godspeed(&dir, None, &["fetch", "alice/hello", "--arch", "x86_64"]);
+    assert_ne!(code(&o), 0, "--arch means nothing without --offline");
+    let o = godspeed(
+        &dir,
+        None,
+        &["fetch", "alice/hello", "--offline", "--registry", "http://127.0.0.1:9"],
+    );
     assert_eq!(code(&o), 19, "{}", stderr(&o));
-    assert!(!dir.join("hello.gsp").exists(), "no file from a registry never reached");
+    let left: Vec<_> = std::fs::read_dir(&dir)
+        .unwrap()
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().ends_with(".gsp"))
+        .collect();
+    assert!(left.is_empty(), "no file from a registry never reached");
 }
 
 #[test]

@@ -268,6 +268,16 @@ fn gsp_spec(
         .collect();
     match (names.as_slice(), releases.as_slice()) {
         ([n], [r]) => Ok(format!("{n}@{}", r.rsplit('/').next().unwrap_or(""))),
+        // Unpublished: no index, so the release's own path names it.
+        ([], [r]) if !docs.contains_key("trust/timestamp.toml") => match r.rsplit_once('/') {
+            Some((n, v)) => Ok(format!("{n}@{v}")),
+            None => Err(Diagnostic::new(
+                Kind::InvalidPackage,
+                Stage::Verification,
+                doing.to_string(),
+                format!("{} names its release by a path with no version.", path.display()),
+            )),
+        },
         _ => Err(Diagnostic::new(
             Kind::InvalidPackage,
             Stage::Verification,
@@ -280,6 +290,90 @@ fn gsp_spec(
             ),
         )),
     }
+}
+
+/// `godspeed inspect <file>.gsp` for an UNPUBLISHED file (`godspeed package --local`): its one release written to a
+/// scratch folder and verified as any package directory is - every file the manifest names, by digest, and the
+/// signature over the manifest - then removed. What it cannot say, and says: whose key that is.
+fn inspect_unpublished(docs: &std::collections::HashMap<String, Vec<u8>>, path: &Path, json: bool) -> Result<()> {
+    let doing = format!("inspect {}", path.display());
+    let spec = gsp_spec(docs, path, &doing)?;
+    let (name, version) = spec.split_once('@').unwrap_or((spec.as_str(), ""));
+    let base = format!("packages/{name}/{version}/");
+    let staging = std::env::temp_dir().join(format!("godspeed-inspect-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&staging);
+    std::fs::create_dir_all(&staging).map_err(|e| Diagnostic::io(&doing, &staging, &e))?;
+    for (p, bytes) in docs {
+        let Some(leaf) = p.strip_prefix(&base) else {
+            let _ = std::fs::remove_dir_all(&staging);
+            return Err(Diagnostic::new(
+                Kind::InvalidPackage,
+                Stage::Verification,
+                doing.clone(),
+                format!(
+                    "it holds {p}, which is not part of {spec} - an unpublished package file holds its release alone."
+                ),
+            )
+            .into());
+        };
+        let out = staging.join(leaf);
+        std::fs::write(&out, bytes).map_err(|e| Diagnostic::io(&doing, &out, &e))?;
+    }
+    let verified = verify::run_with(&staging, true);
+    let carried: Vec<String> = pkg::Arch::ALL
+        .iter()
+        .filter(|a| staging.join(a.artifact_file()).exists())
+        .map(|a| a.to_string())
+        .collect();
+    let _ = std::fs::remove_dir_all(&staging);
+    let verified = verified.map_err(|mut problems| {
+        for p in &mut problems {
+            p.headline = doing.clone();
+        }
+        problems
+    })?;
+    let Some(key) = verified.signed_by else {
+        return Err(Diagnostic::new(Kind::SignatureFailure, Stage::Verification, doing, "It is not signed.".to_string())
+            .next("A machine installs an unpublished package only if a key its operator trusts signed it: `godspeed package --local` signs.")
+            .into());
+    };
+    let m = verified.manifest.manifest();
+    if json {
+        let doc = serde_json::json!({
+            "name": m.name.to_string(),
+            "version": m.version.to_string(),
+            "inspected": true,
+            "published": false,
+            "carries": carried,
+            "signed_by": key.to_string(),
+            "requests": verified.requests,
+        });
+        println!("{doc:#}");
+        return Ok(());
+    }
+    println!(
+        "Inspected {}@{} in {}: nothing was kept",
+        m.name,
+        m.version,
+        path.display()
+    );
+    println!("  UNPUBLISHED: no registry vouches for it, only its signature");
+    println!("  carries: {}", carried.join(", "));
+    println!("  signed by {key}");
+    println!(
+        "  requests: {}",
+        if verified.requests.is_empty() {
+            "nothing".to_string()
+        } else {
+            verified.requests.join("; ")
+        }
+    );
+    println!(
+        "A machine installs it only if its operator trusts that key for {}/:",
+        m.name.publisher()
+    );
+    println!("  godspeed trust add {} {key}", m.name.publisher());
+    Ok(())
 }
 
 /// Days since 1970-01-01 of `YYYY-MM-DD...`.
@@ -310,7 +404,7 @@ pub fn run(
     registry_flag: Option<&str>,
     out: Option<&Path>,
     pin: Option<&str>,
-    gsp: Option<(&Path, Arches)>,
+    offline: Option<Arches>,
     inspect: Option<&Inspect>,
     json: bool,
 ) -> Result<()> {
@@ -319,6 +413,13 @@ pub fn run(
         Some(Inspect::File(p)) => Some(read_gsp(p, &format!("inspect {}", p.display()))?),
         _ => None,
     };
+    // UNPUBLISHED: no registry documents in it, so nothing but its signature can be checked here, and a machine
+    // installs it only if its operator trusts that key.
+    if let (Some(docs), Some(Inspect::File(p))) = (&file, inspect) {
+        if !docs.contains_key("trust/timestamp.toml") {
+            return inspect_unpublished(docs, p, json);
+        }
+    }
     let derived;
     let spec = match (&file, inspect) {
         (Some(docs), Some(Inspect::File(p))) => {
@@ -361,7 +462,7 @@ pub fn run(
     let client = Client::new(&url, None);
     let src = Source {
         client: &client,
-        kept: gsp.is_some().then(Default::default),
+        kept: offline.is_some().then(Default::default),
         file: file.as_ref(),
     };
     // A FILE IS CHECKED AS OF ITS OWN DAY: the last moment its timestamp was valid - the same digits without the
@@ -547,7 +648,7 @@ pub fn run(
         )
     })?;
     let manifest = owned.manifest();
-    if let Some((_, Arches::One(want))) = &gsp {
+    if let Some(Arches::One(want)) = &offline {
         if !manifest.artifacts.iter().any(|a| a.arch.as_str() == want) {
             return Err(Diagnostic::new(
                 Kind::NotFound,
@@ -567,14 +668,18 @@ pub fn run(
             .into());
         }
     }
-    let dest = match (&gsp, inspect) {
+    let dest = match (&offline, inspect) {
         // Inspected: checked in a scratch folder that is removed afterwards.
         (_, Some(_)) => {
             let d = std::env::temp_dir().join(format!("godspeed-inspect-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&d);
             d
         }
-        (Some((file, _)), None) => file.to_path_buf(),
+        // For a machine with no network: one file, named from the release, in `--out` or here.
+        (Some(_), None) => {
+            let leaf = format!("{}-{version}.gsp", name.name());
+            out.map(|o| o.join(&leaf)).unwrap_or_else(|| PathBuf::from(leaf))
+        }
         (None, None) => out
             .map(Path::to_path_buf)
             .unwrap_or_else(|| PathBuf::from(format!("{}-{}-{version}", name.publisher(), name.name()))),
@@ -627,8 +732,8 @@ pub fn run(
         let path = staging.join(file);
         std::fs::write(&path, &bytes).map_err(|e| Diagnostic::io(&doing, &path, &e))?;
         // A binary goes into a `.gsp` only for the architectures asked for; the contract always does.
-        let wanted = match &gsp {
-            Some((_, Arches::One(want))) => file == pkg::CONTRACT_FILE || *file == format!("{want}.elf"),
+        let wanted = match &offline {
+            Some(Arches::One(want)) => file == pkg::CONTRACT_FILE || *file == format!("{want}.elf"),
             _ => true,
         };
         if wanted {
@@ -696,7 +801,7 @@ pub fn run(
             "name": name.to_string(),
             "version": version.to_string(),
             "dir": dest.display().to_string(),
-            "gsp": gsp.is_some(),
+            "gsp": offline.is_some(),
             "inspected": inspect.is_some(),
             "carries": carried,
             "checked_as_of": file_expires,
@@ -736,7 +841,7 @@ pub fn run(
             Inspect::Registry => println!("Inspected {name}@{version} on {url}: nothing was kept"),
         }
         println!("  carries: {}", carried.join(", "));
-    } else if gsp.is_some() {
+    } else if offline.is_some() {
         println!("Wrote {name}@{version} to {}", dest.display());
         println!(
             "  copy it to a Godspeed machine and run: godspeed install {}",
