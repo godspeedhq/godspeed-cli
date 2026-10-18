@@ -122,6 +122,17 @@ enum Command {
         #[command(subcommand)]
         action: KeyAction,
     },
+    /// Check a release as installing it would, and keep nothing: a `.gsp` file offline, or a release on the registry
+    Inspect {
+        /// <file>.gsp, or publisher/name optionally @version
+        target: String,
+        /// On first contact with a registry, trust its root 1 only if it has this digest (sha256:...)
+        #[arg(long, value_name = "DIGEST")]
+        trust_root: Option<String>,
+        /// Print the result as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Verify a package directory against its manifest (needs no OS checkout)
     Verify {
         /// The package directory
@@ -237,6 +248,7 @@ impl Command {
                 | Command::Doctor { json: true }
                 | Command::Package { json: true, .. }
                 | Command::Fetch { json: true, .. }
+                | Command::Inspect { json: true, .. }
         )
     }
 }
@@ -398,12 +410,25 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
                 }
             };
             let gsp = gsp.as_ref().map(|(f, a)| (f.as_path(), a.clone()));
-            cmd::fetch::run(&package, reg, out.as_deref(), trust_root.as_deref(), gsp, json)
+            cmd::fetch::run(&package, reg, out.as_deref(), trust_root.as_deref(), gsp, None, json)
         }
         Command::Key { action } => match action {
             KeyAction::Generate => cmd::sign::key_generate(),
             KeyAction::Show => cmd::sign::key_show(),
         },
+        Command::Inspect {
+            target,
+            trust_root,
+            json,
+        } => {
+            if target.ends_with(".gsp") {
+                let how = cmd::fetch::Inspect::File(PathBuf::from(&target));
+                cmd::fetch::run("", reg, None, trust_root.as_deref(), None, Some(&how), json)
+            } else {
+                let how = cmd::fetch::Inspect::Registry;
+                cmd::fetch::run(&target, reg, None, trust_root.as_deref(), None, Some(&how), json)
+            }
+        }
         Command::Verify { path, json } => {
             let verified = cmd::verify::run(&path)?;
             if json {

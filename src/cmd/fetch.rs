@@ -135,9 +135,26 @@ type Kept = Vec<(String, Vec<u8>)>;
 struct Source<'a> {
     client: &'a Client,
     kept: Option<std::cell::RefCell<Kept>>,
+    /// `inspect <file>.gsp`: the documents the file holds, answered in place of the registry's.
+    file: Option<&'a std::collections::HashMap<String, Vec<u8>>>,
 }
 
 impl Source<'_> {
+    /// GET `path` from the registry, or from the file when there is one: a path the file does not hold is
+    /// absent, as a document the registry does not have is.
+    fn get(&self, path: &str, limit: u64) -> Answer<Option<Vec<u8>>> {
+        match self.file {
+            None => self.client.get(path, limit),
+            Some(f) => match f.get(path) {
+                None => Answer::Done(None),
+                Some(b) if b.len() as u64 > limit => {
+                    Answer::Unknown(format!("{path} in the file is larger than allowed"))
+                }
+                Some(b) => Answer::Done(Some(b.clone())),
+            },
+        }
+    }
+
     fn keep(&self, path: &str, bytes: &[u8]) {
         if let Some(kept) = &self.kept {
             let mut kept = kept.borrow_mut();
@@ -149,7 +166,7 @@ impl Source<'_> {
 }
 
 fn text(src: &Source, doing: &str, path: &str, limit: u64) -> std::result::Result<Option<String>, Diagnostic> {
-    match src.client.get(path, limit) {
+    match src.get(path, limit) {
         Answer::Done(None) => Ok(None),
         Answer::Done(Some(b)) => String::from_utf8(b)
             .inspect(|t| src.keep(path, t.as_bytes()))
@@ -172,6 +189,111 @@ fn required(src: &Source, doing: &str, path: &str, limit: u64) -> std::result::R
     })
 }
 
+/// `godspeed inspect`: every check a fetch makes, and nothing kept.
+pub enum Inspect {
+    /// A release on the registry.
+    Registry,
+    /// A `.gsp` file, checked with no network as of the day its chain was valid.
+    File(PathBuf),
+}
+
+/// A `.gsp` read whole: its documents by the path the registry serves them at. Every rule of the layout is the
+/// shared crate's, so this and the machine that installs it read the same file the same way.
+fn read_gsp(path: &Path, doing: &str) -> std::result::Result<std::collections::HashMap<String, Vec<u8>>, Diagnostic> {
+    let bad = |why: &str| {
+        Diagnostic::new(
+            Kind::InvalidPackage,
+            Stage::Verification,
+            doing.to_string(),
+            format!("{}: {why}.", path.display()),
+        )
+    };
+    let bytes = std::fs::read(path).map_err(|e| Diagnostic::io(doing, path, &e))?;
+    let line_at = |at: usize| -> std::result::Result<(&str, usize), Diagnostic> {
+        let rest = bytes.get(at..).unwrap_or_default();
+        let n = rest
+            .iter()
+            .take(pkg::gsp::LINE_MAX + 1)
+            .position(|&b| b == b'\n')
+            .ok_or_else(|| bad("a line is too long or the file is cut short"))?;
+        let text = std::str::from_utf8(&rest[..n]).map_err(|_| bad("a line is not text"))?;
+        Ok((text, at + n + 1))
+    };
+    let (head, mut at) = line_at(0)?;
+    pkg::gsp::header(head).map_err(|e| bad(e.message()))?;
+    let mut docs = std::collections::HashMap::new();
+    loop {
+        let (text, next) = line_at(at)?;
+        match pkg::gsp::line(text).map_err(|e| bad(e.message()))? {
+            pkg::gsp::Line::End => {
+                if next != bytes.len() {
+                    return Err(bad("there are bytes after its end"));
+                }
+                return Ok(docs);
+            }
+            pkg::gsp::Line::Entry { size, path: p } => {
+                let end = usize::try_from(size)
+                    .ok()
+                    .and_then(|s| next.checked_add(s))
+                    .filter(|&e| e < bytes.len())
+                    .ok_or_else(|| bad("an entry runs past its end"))?;
+                if bytes[end] != b'\n' {
+                    return Err(bad("an entry is not followed by its newline"));
+                }
+                if docs.len() == pkg::gsp::ENTRIES_MAX {
+                    return Err(bad(pkg::gsp::GspError::TooMany.message()));
+                }
+                if docs.insert(p.to_string(), bytes[next..end].to_vec()).is_some() {
+                    return Err(bad(pkg::gsp::GspError::Repeated.message()));
+                }
+                at = end + 1;
+            }
+        }
+    }
+}
+
+/// `publisher/name@version`, from the one index and the one release a `.gsp` holds.
+fn gsp_spec(
+    docs: &std::collections::HashMap<String, Vec<u8>>,
+    path: &Path,
+    doing: &str,
+) -> std::result::Result<String, Diagnostic> {
+    let names: Vec<&str> = docs
+        .keys()
+        .filter_map(|k| k.strip_prefix("index/")?.strip_suffix(".toml"))
+        .collect();
+    let releases: Vec<&str> = docs
+        .keys()
+        .filter_map(|k| k.strip_prefix("packages/")?.strip_suffix("/manifest.toml"))
+        .collect();
+    match (names.as_slice(), releases.as_slice()) {
+        ([n], [r]) => Ok(format!("{n}@{}", r.rsplit('/').next().unwrap_or(""))),
+        _ => Err(Diagnostic::new(
+            Kind::InvalidPackage,
+            Stage::Verification,
+            doing.to_string(),
+            format!(
+                "{} holds {} package(s) and {} release(s); a package file holds one of each.",
+                path.display(),
+                names.len(),
+                releases.len()
+            ),
+        )),
+    }
+}
+
+/// Days since 1970-01-01 of `YYYY-MM-DD...`.
+fn epoch_days(iso: &str) -> Option<i64> {
+    let y: i64 = iso.get(0..4)?.parse().ok()?;
+    let m: i64 = iso.get(5..7)?.parse().ok()?;
+    let d: i64 = iso.get(8..10)?.parse().ok()?;
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * (m + if m > 2 { -3 } else { 9 }) + 2) / 5 + d - 1;
+    Some(era * 146_097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719_468)
+}
+
 /// Which binaries a `.gsp` carries.
 #[derive(Clone)]
 pub enum Arches {
@@ -189,13 +311,31 @@ pub fn run(
     out: Option<&Path>,
     pin: Option<&str>,
     gsp: Option<(&Path, Arches)>,
+    inspect: Option<&Inspect>,
     json: bool,
 ) -> Result<()> {
+    // A FILE to inspect names its own package, and is read before anything else.
+    let file = match inspect {
+        Some(Inspect::File(p)) => Some(read_gsp(p, &format!("inspect {}", p.display()))?),
+        _ => None,
+    };
+    let derived;
+    let spec = match (&file, inspect) {
+        (Some(docs), Some(Inspect::File(p))) => {
+            derived = gsp_spec(docs, p, &format!("inspect {}", p.display()))?;
+            derived.as_str()
+        }
+        _ => spec,
+    };
     let (name_text, wanted) = match spec.split_once('@') {
         Some((n, v)) => (n, Some(v)),
         None => (spec, None),
     };
-    let doing = format!("fetch {spec}");
+    let doing = match inspect {
+        Some(Inspect::File(p)) => format!("inspect {}", p.display()),
+        Some(Inspect::Registry) => format!("inspect {spec}"),
+        None => format!("fetch {spec}"),
+    };
     let name = PackageName::parse(name_text).map_err(|e| {
         Diagnostic::new(
             Kind::InvalidProject,
@@ -222,13 +362,40 @@ pub fn run(
     let src = Source {
         client: &client,
         kept: gsp.is_some().then(Default::default),
+        file: file.as_ref(),
     };
-    let now = now_utc();
+    // A FILE IS CHECKED AS OF ITS OWN DAY: the last moment its timestamp was valid - the same digits without the
+    // `Z`, which sorts just below it - and nothing this workstation has seen of the registry since is consulted
+    // or changed by it.
+    let file_expires: Option<String> = match &file {
+        None => None,
+        Some(docs) => {
+            let ts = docs
+                .get("trust/timestamp.toml")
+                .and_then(|b| std::str::from_utf8(b).ok())
+                .ok_or_else(|| untrusted(&doing, TrustError::Malformed("the file holds no timestamp")))?;
+            Some(
+                trust::Timestamp::parse(ts)
+                    .map_err(|e| untrusted(&doing, e))?
+                    .header
+                    .expires
+                    .to_string(),
+            )
+        }
+    };
+    let now = match &file_expires {
+        Some(e) => e.trim_end_matches('Z').to_string(),
+        None => now_utc(),
+    };
     let fail = |e: TrustError| untrusted(&doing, e);
 
     // 1. The root: what this machine already trusts, or root 1 on first use.
-    eprintln!("Checking {url}'s trust metadata...");
-    let mut state = match TrustState::load(&url)? {
+    match &inspect {
+        Some(Inspect::File(p)) => eprintln!("Checking {} offline, against the root of {url}...", p.display()),
+        _ => eprintln!("Checking {url}'s trust metadata..."),
+    };
+    let loaded = if file.is_some() { None } else { TrustState::load(&url)? };
+    let mut state = match loaded {
         Some(s) => s,
         None => {
             let first = required(&src, &doing, "trust/root/1.toml", METADATA_LIMIT)?;
@@ -248,7 +415,9 @@ pub fn run(
             }
             let root = Root::parse(&first).map_err(fail)?;
             trust::verify_by(&root, trust::Role::Root, first.as_bytes(), &sig).map_err(fail)?;
-            if pin.is_none() && built_in.is_some() {
+            if file.is_some() {
+                eprintln!("Its root 1 matches the official registry's, built into this CLI.");
+            } else if pin.is_none() && built_in.is_some() {
                 eprintln!("First contact with the official registry: its root 1 matches the one built into this CLI.");
             } else if pin.is_none() {
                 eprintln!("First contact with {url}: trusting its root 1, {digest}.");
@@ -311,7 +480,9 @@ pub fn run(
     // The metadata held together: remember how far this machine has seen, so it never goes back.
     state.timestamp_version = Some(timestamp.header.version);
     state.namespaces_version = Some(namespaces.header.version);
-    state.save()?;
+    if file.is_none() {
+        state.save()?;
+    }
 
     // 3. The release: chosen from the verified index, its manifest by digest, its signature by a key the
     //    signed namespaces vouch for, for THIS release.
@@ -396,9 +567,15 @@ pub fn run(
             .into());
         }
     }
-    let dest = match &gsp {
-        Some((file, _)) => file.to_path_buf(),
-        None => out
+    let dest = match (&gsp, inspect) {
+        // Inspected: checked in a scratch folder that is removed afterwards.
+        (_, Some(_)) => {
+            let d = std::env::temp_dir().join(format!("godspeed-inspect-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&d);
+            d
+        }
+        (Some((file, _)), None) => file.to_path_buf(),
+        (None, None) => out
             .map(Path::to_path_buf)
             .unwrap_or_else(|| PathBuf::from(format!("{}-{}-{version}", name.publisher(), name.name()))),
     };
@@ -428,9 +605,13 @@ pub fn run(
             .map(|a| (a.arch.artifact_file().to_string(), a.size)),
     );
     for (file, limit) in &files {
-        eprintln!("Downloading {file}...");
-        let bytes = match client.get(&format!("{base}/{file}"), *limit) {
+        if src.file.is_none() {
+            eprintln!("Downloading {file}...");
+        }
+        let bytes = match src.get(&format!("{base}/{file}"), *limit) {
             Answer::Done(Some(b)) => b,
+            // A package file may carry only some architectures' binaries.
+            Answer::Done(None) if src.file.is_some() && file.as_str() != pkg::CONTRACT_FILE => continue,
             Answer::Done(None) => {
                 return Err(Diagnostic::new(
                     Kind::InvalidPackage,
@@ -458,14 +639,38 @@ pub fn run(
         let path = staging.join(file);
         std::fs::write(&path, text).map_err(|e| Diagnostic::io(&doing, &path, &e))?;
     }
-    let verified = match verify::run(&staging) {
+    let carried: Vec<String> = manifest
+        .artifacts
+        .iter()
+        .filter(|a| staging.join(a.arch.artifact_file()).exists())
+        .map(|a| a.arch.to_string())
+        .collect();
+    if carried.is_empty() {
+        let _ = std::fs::remove_dir_all(&staging);
+        return Err(Diagnostic::new(
+            Kind::InvalidPackage,
+            Stage::Verification,
+            doing.clone(),
+            format!("{name}@{version} carries no binary at all."),
+        )
+        .into());
+    }
+    let verified = match verify::run_with(&staging, src.file.is_some()) {
         Ok(v) => v,
-        Err(problems) => {
+        Err(mut problems) => {
             let _ = std::fs::remove_dir_all(&staging);
+            // Inspected, the folder was scratch: the problem is with what was asked about.
+            if inspect.is_some() {
+                for p in &mut problems {
+                    p.headline = doing.clone();
+                }
+            }
             return Err(problems);
         }
     };
-    if let Some(kept) = &src.kept {
+    if inspect.is_some() {
+        let _ = std::fs::remove_dir_all(&staging);
+    } else if let Some(kept) = &src.kept {
         // Every document the fetch read and checked, under the path the registry serves it at.
         let kept = kept.borrow();
         let entries: Vec<(&str, &[u8])> = kept.iter().map(|(p, b)| (p.as_str(), b.as_slice())).collect();
@@ -492,6 +697,9 @@ pub fn run(
             "version": version.to_string(),
             "dir": dest.display().to_string(),
             "gsp": gsp.is_some(),
+            "inspected": inspect.is_some(),
+            "carries": carried,
+            "checked_as_of": file_expires,
             "registry": url,
             "verified": {
                 "root": root.header.version,
@@ -513,7 +721,22 @@ pub fn run(
         ),
         None => format!("an active key of {}/", name.publisher()),
     };
-    if gsp.is_some() {
+    if let Some(how) = inspect {
+        match how {
+            Inspect::File(p) => {
+                println!("Inspected {name}@{version} in {}: nothing was kept", p.display());
+                let expires = file_expires.as_deref().unwrap_or("");
+                let today = epoch_days(&now_utc());
+                let age = match (today, epoch_days(expires)) {
+                    (Some(t), Some(e)) => format!(", {} days ago", (t - e).max(0)),
+                    _ => String::new(),
+                };
+                println!("  checked offline, as of {}{age}", expires.get(..10).unwrap_or(expires));
+            }
+            Inspect::Registry => println!("Inspected {name}@{version} on {url}: nothing was kept"),
+        }
+        println!("  carries: {}", carried.join(", "));
+    } else if gsp.is_some() {
         println!("Wrote {name}@{version} to {}", dest.display());
         println!(
             "  copy it to a Godspeed machine and run: godspeed install {}",

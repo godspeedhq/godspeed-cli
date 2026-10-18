@@ -83,6 +83,12 @@ fn requests(contract: &toml::Table) -> Vec<String> {
 }
 
 pub fn run(dir: &Path) -> Result<Verified> {
+    run_with(dir, false)
+}
+
+/// [`run`], where `some_binaries` lets a binary the manifest names be absent - a package file may carry only the
+/// architectures it was made for. Every binary that IS present is checked exactly as `run` checks it.
+pub fn run_with(dir: &Path, some_binaries: bool) -> Result<Verified> {
     let mut problems = Vec::new();
 
     // 1. The manifest: it decides what every other file must be.
@@ -187,6 +193,9 @@ pub fn run(dir: &Path) -> Result<Verified> {
     for a in manifest.artifacts {
         let file = a.arch.artifact_file();
         let path = dir.join(file);
+        if some_binaries && !path.exists() {
+            continue;
+        }
         match stream(&path, *a) {
             Err(e) => problems.push(invalid(dir, format!("{file} cannot be read: {e}"))),
             Ok(Err(e)) => problems.push(integrity(dir, format!("{file}: {e}."))),

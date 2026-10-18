@@ -678,6 +678,70 @@ fn a_package_file_must_be_named_gsp_and_carry_a_real_architecture() {
 }
 
 #[test]
+fn inspect_refuses_a_package_file_that_is_not_one_or_is_not_the_registrys() {
+    let dir = scratch("inspect_gsp");
+    std::fs::write(
+        dir.join("junk.gsp"),
+        "hello
+",
+    )
+    .unwrap();
+    let o = godspeed(&dir, None, &["inspect", "junk.gsp"]);
+    assert_ne!(code(&o), 0, "{}", stderr(&o));
+    assert!(stderr(&o).contains("not a Godspeed package file"), "{}", stderr(&o));
+
+    let mut cut = Vec::new();
+    godspeed_package::gsp::write(&mut cut, &[("trust/root/1.toml", b"root".as_slice())]).unwrap();
+    cut.truncate(cut.len() - 6);
+    std::fs::write(dir.join("cut.gsp"), &cut).unwrap();
+    let o = godspeed(&dir, None, &["inspect", "cut.gsp"]);
+    assert_ne!(code(&o), 0, "{}", stderr(&o));
+    assert!(
+        stderr(&o).contains("runs past its end") || stderr(&o).contains("cut short"),
+        "{}",
+        stderr(&o)
+    );
+
+    // Well formed, but its root 1 is not the official registry's: nothing in it is trusted, with no network used.
+    let mut forged = Vec::new();
+    godspeed_package::gsp::write(
+        &mut forged,
+        &[
+            (
+                "trust/root/1.toml",
+                b"format = 1
+type = \"root\"
+version = 1
+"
+                .as_slice(),
+            ),
+            ("trust/root/1.sig", b"".as_slice()),
+            (
+                "trust/timestamp.toml",
+                b"format = 1
+type = \"timestamp\"
+version = 1
+expires = \"2099-01-01T00:00:00Z\"
+snapshot = \"1 sha256:0000000000000000000000000000000000000000000000000000000000000000\"
+"
+                .as_slice(),
+            ),
+            ("index/alice/hello.toml", b"".as_slice()),
+            ("packages/alice/hello/1.0.0/manifest.toml", b"".as_slice()),
+        ],
+    )
+    .unwrap();
+    std::fs::write(dir.join("forged.gsp"), &forged).unwrap();
+    let o = godspeed(&dir, None, &["inspect", "forged.gsp"]);
+    assert_ne!(code(&o), 0, "{}", stderr(&o));
+    assert!(stderr(&o).contains("built into this CLI"), "{}", stderr(&o));
+    assert!(
+        !dir.join(".godspeed-config/trust").exists(),
+        "inspecting a file remembers nothing of any registry"
+    );
+}
+
+#[test]
 fn a_bad_signing_key_in_the_environment_is_refused() {
     let dir = write_package("bad_seed");
     let mut c = command(dir.parent().unwrap(), None, &["sign", dir.to_str().unwrap()]);

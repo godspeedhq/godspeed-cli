@@ -221,7 +221,8 @@ namespaces, index, manifest, signature, files ([docs/trust-metadata.md](docs/tru
 A `.gsp` holds every document that fetch read and checked - the roots from root 1, the timestamp, snapshot,
 namespaces, the package's index, its manifest, signature and contract, and its binaries (all of them, or the
 one `--arch` names) - under the paths the registry serves them at, so a machine checks it exactly as it
-checks the registry, from the root it already trusts. Only a published release can become one. Installing
+checks the registry, from the root it already trusts. Only a published release can become one. `godspeed inspect hello.gsp` checks a file the same way, with no
+network, and keeps nothing; `godspeed inspect godspeed/hello` does it against the registry. Installing
 from a `.gsp` on the machine (`godspeed install hello.gsp`) is being built in GodspeedOS; its design, with
 what a file this old can and cannot prove, is GodspeedOS `docs/developer-services-design.md` 15.
 
