@@ -27,7 +27,7 @@
   <h1>Examples</h1>
   <p class="lede">Real projects, each started with <code>godspeed new</code> and written only against the
   public standard library, <code>gs</code>. CI builds every one for x86_64, aarch64, armv7 and riscv64
-  against GodspeedOS v0.28.0, so none of this is code that does not compile.</p>
+  against GodspeedOS v0.29.0, so none of this is code that does not compile.</p>
 
   <div class="grid">
     <a class="card" href="#hello"><h3>hello</h3><p>The template itself: the smallest valid service.</p></a>
@@ -49,7 +49,7 @@
 <pre><span class="p">$ </span>git clone https://github.com/godspeedhq/godspeed-cli
 <span class="p">$ </span>cd godspeed-cli/examples/heartbeat
 <span class="p">$ </span>godspeed check
-<span class="o">service heartbeat is valid against GodspeedOS v0.28.0.</span>
+<span class="o">service heartbeat is valid against GodspeedOS v0.29.0.</span>
 <span class="p">$ </span>godspeed build --all
 <span class="o">Built x86_64 target/x86_64-unknown-none/release/heartbeat
 Built aarch64 target/aarch64-unknown-none/release/heartbeat
@@ -342,7 +342,7 @@ ipc_send  = ["fs"]    # ask the filesystem service for files</pre>
 <span class="c"># The fixedbuf library from this repository, beside this project.</span>
 fixedbuf = { path = "../fixedbuf" }
 <span class="c"># The Godspeed standard library, at the OS release this project was created against.</span>
-godspeed = { git = "https://github.com/godspeedhq/godspeed-os", tag = "v0.28.0" }</pre>
+godspeed = { git = "https://github.com/godspeedhq/godspeed-os", tag = "v0.29.0" }</pre>
   </section>
 
   <section class="example" id="fixedbuf">

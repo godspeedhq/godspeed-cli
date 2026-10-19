@@ -4,16 +4,14 @@ version = 4
 
 [[package]]
 name = "godspeed"
-version = "0.28.0"
-source = "git+https://github.com/godspeedhq/godspeed-os?tag=v0.28.0#1ebb1bb95c5c915982fd51ab333e338dd350a59f"
+version = "0.29.0"
 dependencies = [
  "godspeed-sdk",
 ]
 
 [[package]]
 name = "godspeed-sdk"
-version = "0.28.0"
-source = "git+https://github.com/godspeedhq/godspeed-os?tag=v0.28.0#1ebb1bb95c5c915982fd51ab333e338dd350a59f"
+version = "0.29.0"
 
 [[package]]
 name = "shout"

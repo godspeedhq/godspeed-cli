@@ -102,8 +102,8 @@ Next:
       files that describe it - its pinned compiler, targets, linker script and contract schema - the first
       time, then keeps them.</p>
 <pre><span class="p">$ </span>godspeed doctor
-<span class="o">Fetching the GodspeedOS 0.28.0 platform kit (once for each release)...
-GodspeedOS                 ok       0.28.0 (platform kit from 1ebb1bb95c5c, cached in ~/.cache/godspeed/platform/0.28.0)
+<span class="o">Fetching the GodspeedOS 0.29.0 platform kit (once for each release)...
+GodspeedOS                 ok       0.29.0 (platform kit from 37092b09dfd1, cached in ~/.cache/godspeed/platform/0.29.0)
 Rust toolchain             ok       nightly-2026-05-16</span></pre>
       <p><code>doctor</code> checks the toolchain, all four targets and QEMU, and prints the command that
       fixes anything missing. Working on GodspeedOS itself? <code>--os &lt;path&gt;</code> builds against your
@@ -112,10 +112,10 @@ Rust toolchain             ok       nightly-2026-05-16</span></pre>
     <li>
       <h3>Create and build</h3>
 <pre><span class="p">$ </span>godspeed new service hello
-<span class="o">Created service hello in hello (GodspeedOS v0.28.0)</span>
+<span class="o">Created service hello in hello (GodspeedOS v0.29.0)</span>
 <span class="p">$ </span>cd hello
 <span class="p">$ </span>godspeed check
-<span class="o">service hello is valid against GodspeedOS v0.28.0.</span>
+<span class="o">service hello is valid against GodspeedOS v0.29.0.</span>
 <span class="p">$ </span>godspeed build
 <span class="o">Validating project...
 Fetching dependencies...
@@ -128,7 +128,7 @@ These are service binaries, not an OS image; nothing was installed or run.</span
     <li>
       <h3>Package it, and look before anything leaves your machine</h3>
 <pre><span class="p">$ </span>godspeed package
-<span class="o">Verified alice/hello 0.1.0 (service), built against GodspeedOS 0.28.0
+<span class="o">Verified alice/hello 0.1.0 (service), built against GodspeedOS 0.29.0
   contract.toml              sha256:762be027...
                  requests: log_write
   x86_64.elf        18952 B  sha256:2f3fa20d...
