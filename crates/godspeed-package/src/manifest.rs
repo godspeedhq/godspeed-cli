@@ -111,6 +111,20 @@ impl Requirement {
     }
 }
 
+/// An unfilled slot, for a reader that keeps requirements in fixed storage (GodspeedOS's `godspeed-pm`): a valid
+/// name, `x/x`, and the version 0.0.0, never shown - a reader hands out only the slots it filled.
+impl Default for Requirement {
+    fn default() -> Self {
+        let mut name = [0u8; FULL_MAX];
+        name[..3].copy_from_slice(b"x/x");
+        Requirement {
+            name,
+            len: 3,
+            range: VersionReq::Exact(Version::new(0, 0, 0)),
+        }
+    }
+}
+
 impl fmt::Debug for Requirement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {}", self.name(), self.range)
