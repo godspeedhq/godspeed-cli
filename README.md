@@ -61,7 +61,7 @@ uninstall godspeed-cli` instead.
 
 Or build it yourself with Rust:
 
-    cargo install --git https://github.com/godspeedhq/godspeed-cli --tag cli-v0.2.0 --locked godspeed-cli
+    cargo install --git https://github.com/godspeedhq/godspeed-cli --tag cli-v0.3.0 --locked godspeed-cli
 
 A checksum proves a download is the file the release lists; releases are not signed yet.
 

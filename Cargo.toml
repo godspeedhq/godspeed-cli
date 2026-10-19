@@ -1,6 +1,6 @@
 [package]
 name = "godspeed-cli"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "GPL-2.0-only"
 description = "Developer CLI for GodspeedOS: create, check, build and (later) package and publish Godspeed projects"
