@@ -170,6 +170,8 @@ GodspeedOS has one, `godspeed run` says so rather than editing the OS for you.
                              description and license a package of it carries
     Cargo.toml               how Rust builds it; depends on the `godspeed` stdlib at an OS release tag
     contracts/<name>.toml    (services) the OS service contract: the authority the service REQUESTS
+                             [requires] in godspeed.toml: other packages it needs installed, e.g.
+                             "alice/notes-store" = "^1.2.0" - never a built-in such as fs
     rust-toolchain.toml      the compiler that OS release is built with
     src/
 
