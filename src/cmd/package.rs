@@ -163,8 +163,22 @@ pub fn run(platform: &Platform, project: &Project, arches: &[&'static Arch], out
     }
     artifacts.sort_by_key(|a| a.arch);
 
+    let requires: Vec<pkg::Requirement> = project
+        .requires
+        .iter()
+        .map(|(n, r)| {
+            pkg::Requirement::new(
+                pkg::PackageName::parse(n).expect("checked when the project was read"),
+                *r,
+            )
+        })
+        .collect();
     let manifest = Manifest {
-        format: pkg::FORMAT,
+        format: if requires.is_empty() {
+            pkg::FORMAT
+        } else {
+            pkg::FORMAT_REQUIRES
+        },
         name,
         version,
         kind: match project.kind {
@@ -178,6 +192,7 @@ pub fn run(platform: &Platform, project: &Project, arches: &[&'static Arch], out
         os_release,
         contract: Sha256Digest::of(&contract_bytes),
         artifacts: &artifacts,
+        requires: &requires,
     };
     let mut problems = Vec::new();
     manifest.validate(|p| problems.push(refuse(Kind::InvalidProject, headline, format!("{p}"))));

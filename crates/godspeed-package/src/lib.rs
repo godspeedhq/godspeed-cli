@@ -51,7 +51,10 @@ pub use digest::{DigestError, Sha256Digest, Sha256Stream};
 #[cfg(feature = "toml")]
 pub use index::{index_to_toml, parse_index, OwnedPackageIndex};
 pub use index::{is_timestamp, PackageIndex, Release, INDEX_FORMAT};
-pub use manifest::{Artifact, Kind, Manifest, Problem, ProblemKind, CONTRACT_FILE, FORMAT, MAX_ARTIFACT_SIZE};
+pub use manifest::{
+    Artifact, Kind, Manifest, Problem, ProblemKind, Requirement, CONTRACT_FILE, FORMAT, FORMAT_REQUIRES,
+    MAX_ARTIFACT_SIZE, MAX_REQUIRES,
+};
 pub use name::{NameError, PackageName, FULL_MAX, PART_MAX};
 pub use sign::{
     signed_message, ManifestSignature, PublicKey, Signature, SignatureError, MANIFEST_CONTEXT, SIGNATURE_FILE,
@@ -60,4 +63,4 @@ pub use sign::{
 #[cfg(feature = "toml")]
 pub use text::{parse, to_toml, OwnedManifest, ParseError};
 pub use verify::{ArtifactVerifier, VerifyError};
-pub use version::{Version, VersionError};
+pub use version::{Version, VersionError, VersionReq, VersionReqError};

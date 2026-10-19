@@ -162,6 +162,30 @@ fn check_contract(platform: &Platform, project: &Project, cargo_name: &str, prob
         );
     }
 
+    // A PEER THAT IS A PACKAGE MUST BE REQUIRED (GodspeedOS docs/developer-services-design.md 16.2): a built-in
+    // service has a plain name and comes with the OS; one named publisher/name is installed by someone, and a
+    // package that talks to it without requiring it would install, start, and find nobody there.
+    let peers = contract
+        .get("capabilities")
+        .and_then(|c| c.get("ipc_send"))
+        .and_then(|p| p.as_array())
+        .map(|a| a.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
+        .unwrap_or_default();
+    for p in peers.iter().filter(|p| p.contains('/')) {
+        if !project.requires.iter().any(|(n, _)| n == p) {
+            problems.push(
+                problem(format!(
+                    "The contract sends to the package {p}, and {} does not require it.",
+                    crate::project::MANIFEST
+                ))
+                .next(format!(
+                    "Add it under [requires] in {}: \"{p}\" = \"^<the version you built against>\".",
+                    crate::project::MANIFEST
+                )),
+            );
+        }
+    }
+
     let cname = contract.get("name").and_then(|n| n.as_str());
     if let Some(cname) = cname {
         if cname != cargo_name {

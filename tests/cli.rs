@@ -523,6 +523,7 @@ fn write_package(test: &str) -> PathBuf {
         os_release: pkg::Version::new(0, 28, 0),
         contract: pkg::Sha256Digest::of(CONTRACT.as_bytes()),
         artifacts: &artifacts,
+        requires: &[],
     };
     std::fs::write(dir.join("manifest.toml"), pkg::to_toml(&m)).unwrap();
     dir
@@ -851,7 +852,7 @@ fn verify_catches_malformed_packages() {
                 let t = std::fs::read_to_string(&p).unwrap().replace("format = 1", "format = 9");
                 std::fs::write(p, t).unwrap();
             },
-            "this is format 9; this reader knows format 1",
+            "this is format 9; this reader knows formats 1 to 2",
         ),
         (
             // The right bytes for the manifest, but an x86 binary filed as riscv64: the digest cannot catch

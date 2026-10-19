@@ -347,6 +347,7 @@ fn inspect_unpublished(docs: &std::collections::HashMap<String, Vec<u8>>, path: 
             "carries": carried,
             "signed_by": key.to_string(),
             "requests": verified.requests,
+            "requires": super::verify::requires(&verified.manifest.manifest()),
         });
         println!("{doc:#}");
         return Ok(());
@@ -366,6 +367,15 @@ fn inspect_unpublished(docs: &std::collections::HashMap<String, Vec<u8>>, path: 
             "nothing".to_string()
         } else {
             verified.requests.join("; ")
+        }
+    );
+    let req = super::verify::requires(&verified.manifest.manifest());
+    println!(
+        "  requires: {}",
+        if req.is_empty() {
+            "nothing installed besides the OS".to_string()
+        } else {
+            req.join("; ")
         }
     );
     println!(
@@ -815,6 +825,7 @@ pub fn run(
             "signed_by": signature.key.to_string(),
             "key_retired_since": retired,
             "requests": verified.requests,
+            "requires": super::verify::requires(&verified.manifest.manifest()),
         });
         println!("{doc:#}");
         return Ok(());
@@ -864,6 +875,15 @@ pub fn run(
             "nothing".to_string()
         } else {
             verified.requests.join("; ")
+        }
+    );
+    let req = super::verify::requires(&verified.manifest.manifest());
+    println!(
+        "  requires: {}",
+        if req.is_empty() {
+            "nothing installed besides the OS".to_string()
+        } else {
+            req.join("; ")
         }
     );
     println!("A verified package is one its publisher's key signed and the registry's metadata vouches for. It is");

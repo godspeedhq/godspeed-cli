@@ -2,13 +2,22 @@
 
 use crate::arch::Arch;
 use crate::digest::Sha256Digest;
-use crate::name::PackageName;
-use crate::version::Version;
+use crate::name::{PackageName, FULL_MAX};
+use crate::version::{Version, VersionReq};
 use core::fmt;
 
-/// The manifest format this crate reads and writes. A reader refuses any other value: a format change
-/// is a new number, never a silent reinterpretation (see `docs/package-format.md`, compatibility).
+/// The manifest format this crate reads and writes for a package with no requirements. A reader refuses any
+/// value it does not know: a format change is a new number, never a silent reinterpretation (see
+/// `docs/package-format.md`, compatibility).
 pub const FORMAT: u32 = 1;
+
+/// The format of a manifest WITH requirements (`[[requires]]`, GodspeedOS `docs/developer-services-design.md`
+/// 16). Written only when there is one, so a package without stays readable by every reader of format 1, and a
+/// reader that predates requirements refuses one that has them as a format it does not read - the true reason.
+pub const FORMAT_REQUIRES: u32 = 2;
+
+/// The most packages one manifest may require.
+pub const MAX_REQUIRES: usize = 8;
 
 /// The service contract's file name inside a package.
 pub const CONTRACT_FILE: &str = "contract.toml";
@@ -65,6 +74,49 @@ pub struct Artifact {
     pub digest: Sha256Digest,
 }
 
+/// A package this one needs installed and running, and the versions of it that will do. It grants nothing: the
+/// contract's peers are still what the operator approves.
+///
+/// The name is held INLINE, at most [`FULL_MAX`] bytes, so a requirement borrows nothing: an owned manifest can
+/// hand out its requirements, and a `no_std` reader can keep them in a fixed array.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct Requirement {
+    name: [u8; FULL_MAX],
+    len: u8,
+    /// The versions of it that will do.
+    pub range: VersionReq,
+}
+
+impl Requirement {
+    /// A requirement of `name`, in `range`.
+    pub fn new(name: PackageName<'_>, range: VersionReq) -> Self {
+        let mut buf = [0u8; FULL_MAX];
+        let (p, n) = (name.publisher().as_bytes(), name.name().as_bytes());
+        // A parsed name is at most FULL_MAX bytes whole, so this fits.
+        let len = (p.len() + 1 + n.len()).min(FULL_MAX);
+        buf[..p.len()].copy_from_slice(p);
+        buf[p.len()] = b'/';
+        buf[p.len() + 1..len].copy_from_slice(&n[..len - p.len() - 1]);
+        Requirement {
+            name: buf,
+            len: len as u8,
+            range,
+        }
+    }
+
+    /// The package needed, `publisher/name`.
+    pub fn name(&self) -> PackageName<'_> {
+        let s = core::str::from_utf8(&self.name[..self.len as usize]).unwrap_or("");
+        PackageName::parse(s).expect("a requirement is built from a parsed name")
+    }
+}
+
+impl fmt::Debug for Requirement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}", self.name(), self.range)
+    }
+}
+
 /// One version of one package.
 ///
 /// It binds a name and version to the exact bytes of the service contract and of each architecture's
@@ -91,6 +143,9 @@ pub struct Manifest<'a> {
     pub contract: Sha256Digest,
     /// One artifact per architecture, in canonical order ([`Arch::ALL`]).
     pub artifacts: &'a [Artifact],
+    /// The packages this one needs, at most [`MAX_REQUIRES`]; empty for most. Non-empty means format
+    /// [`FORMAT_REQUIRES`].
+    pub requires: &'a [Requirement],
 }
 
 /// Which rule a manifest broke.
@@ -131,6 +186,14 @@ pub enum ProblemKind {
     BadTimestamp,
     /// An index's releases are not in publication order.
     TimestampOrder,
+    /// The format and the requirements disagree: format 1 with requirements, or format 2 without.
+    FormatForRequirements,
+    /// More than [`MAX_REQUIRES`] requirements.
+    TooManyRequirements,
+    /// The same package required twice.
+    DuplicateRequirement,
+    /// A package that requires itself.
+    RequiresItself,
 }
 
 /// A rule a manifest broke, and the field it broke it in.
@@ -149,7 +212,14 @@ impl fmt::Display for Problem {
             ProblemKind::Missing => write!(f, "{field} is required"),
             ProblemKind::Malformed(what) => write!(f, "{field}: {what}"),
             ProblemKind::UnknownFormat { found, known } => {
-                write!(f, "{field}: this is format {found}; this reader knows format {known}")
+                if known > 1 {
+                    write!(
+                        f,
+                        "{field}: this is format {found}; this reader knows formats 1 to {known}"
+                    )
+                } else {
+                    write!(f, "{field}: this is format {found}; this reader knows format {known}")
+                }
             }
             ProblemKind::KindNotPackageable(why) => write!(f, "{field}: {why}"),
             ProblemKind::NoArtifacts => write!(f, "{field}: a package carries at least one architecture's binary"),
@@ -177,6 +247,13 @@ impl fmt::Display for Problem {
             ProblemKind::DuplicateVersion(v) => write!(f, "{field}: version {v} is listed twice"),
             ProblemKind::BadTimestamp => write!(f, "{field}: a timestamp is YYYY-MM-DDTHH:MM:SSZ, in UTC"),
             ProblemKind::TimestampOrder => write!(f, "{field}: releases are listed in the order they were published"),
+            ProblemKind::FormatForRequirements => write!(
+                f,
+                "{field}: a manifest with requirements is format {FORMAT_REQUIRES}, and one without is format {FORMAT}"
+            ),
+            ProblemKind::TooManyRequirements => write!(f, "{field}: at most {MAX_REQUIRES} packages may be required"),
+            ProblemKind::DuplicateRequirement => write!(f, "{field}: a package is required twice"),
+            ProblemKind::RequiresItself => write!(f, "{field}: a package cannot require itself"),
         }
     }
 }
@@ -198,14 +275,26 @@ impl Manifest<'_> {
             report(Problem { field, kind });
         };
 
-        if self.format != FORMAT {
+        if self.format != FORMAT && self.format != FORMAT_REQUIRES {
             bad(
                 "format",
                 ProblemKind::UnknownFormat {
                     found: self.format,
-                    known: FORMAT,
+                    known: FORMAT_REQUIRES,
                 },
             );
+        } else if (self.format == FORMAT_REQUIRES) == self.requires.is_empty() {
+            bad("format", ProblemKind::FormatForRequirements);
+        }
+        if self.requires.len() > MAX_REQUIRES {
+            bad("requires", ProblemKind::TooManyRequirements);
+        }
+        for (i, r) in self.requires.iter().enumerate() {
+            if r.name() == self.name {
+                bad("requires.name", ProblemKind::RequiresItself);
+            } else if self.requires[..i].iter().any(|q| q.name() == r.name()) {
+                bad("requires.name", ProblemKind::DuplicateRequirement);
+            }
         }
         if let Some(d) = self.description {
             if !text_ok(d, MAX_DESCRIPTION) {
@@ -299,6 +388,7 @@ pub(crate) mod tests {
             os_release: Version::new(0, 28, 0),
             contract: Sha256Digest::of(b"name = \"hello\""),
             artifacts,
+            requires: &[],
         }
     }
 
@@ -328,15 +418,15 @@ pub(crate) mod tests {
             digest: Sha256Digest::of(b""),
         });
         let mut m = manifest(&a);
-        m.format = 2;
+        m.format = 3;
         m.description = Some("line one\nline two");
         let found = problems(&m);
         assert_eq!(
             found,
             [
                 ProblemKind::UnknownFormat {
-                    found: 2,
-                    known: FORMAT
+                    found: 3,
+                    known: FORMAT_REQUIRES
                 },
                 ProblemKind::BadText,
                 ProblemKind::EmptyArtifact(Arch::Riscv64),
@@ -367,5 +457,55 @@ pub(crate) mod tests {
                 ProblemKind::VersionDiffersFromContract
             ]
         );
+    }
+
+    fn req(name: &str, range: &str) -> Requirement {
+        Requirement::new(PackageName::parse(name).unwrap(), range.parse().unwrap())
+    }
+
+    #[test]
+    fn a_requirement_holds_its_name_whole() {
+        let r = req("alice/notes-store", "^1.2.0");
+        assert_eq!(std::format!("{}", r.name()), "alice/notes-store");
+        assert_eq!(r.name().publisher(), "alice");
+        assert_eq!(std::format!("{r:?}"), "alice/notes-store ^1.2.0");
+        let long = std::format!("{}/{}", "p".repeat(63), "n".repeat(64));
+        assert_eq!(std::format!("{}", req(&long, "=1.0.0").name()), long);
+    }
+
+    #[test]
+    fn requirements_need_format_2_and_format_2_needs_requirements() {
+        let a = artifacts();
+        let r = [req("alice/store", "^1.2.0")];
+        let mut m = manifest(&a);
+        m.requires = &r;
+        assert_eq!(problems(&m), [ProblemKind::FormatForRequirements]);
+        m.format = FORMAT_REQUIRES;
+        assert_eq!(problems(&m), []);
+        m.requires = &[];
+        assert_eq!(problems(&m), [ProblemKind::FormatForRequirements]);
+    }
+
+    #[test]
+    fn requirements_are_bounded_unique_and_never_the_package_itself() {
+        let a = artifacts();
+        let r = [
+            req("alice/store", "^1.2.0"),
+            req("alice/store", "=1.3.0"),
+            req("alice/hello", ">=1.0.0"),
+        ];
+        let mut m = manifest(&a);
+        m.format = FORMAT_REQUIRES;
+        m.requires = &r;
+        assert_eq!(
+            problems(&m),
+            [ProblemKind::DuplicateRequirement, ProblemKind::RequiresItself]
+        );
+        const NAMES: [&str; MAX_REQUIRES + 1] = [
+            "alice/p0", "alice/p1", "alice/p2", "alice/p3", "alice/p4", "alice/p5", "alice/p6", "alice/p7", "alice/p8",
+        ];
+        let many: Vec<_> = NAMES.iter().map(|n| req(n, "^1.0.0")).collect();
+        m.requires = &many;
+        assert_eq!(problems(&m), [ProblemKind::TooManyRequirements]);
     }
 }

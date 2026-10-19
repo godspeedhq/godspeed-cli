@@ -89,6 +89,94 @@ impl fmt::Display for Version {
     }
 }
 
+/// A range of versions a requirement accepts (GodspeedOS `docs/developer-services-design.md` 16.2): one of
+/// three forms, each written with the whole version, because before 1.0 a shortened caret is ambiguous
+/// (`^0` and `^0.0.0` accept different versions).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VersionReq {
+    /// `^1.2.0`: the same major version and at least this one; for `0.x` the same minor, and for `0.0.z`
+    /// exactly that version - before 1.0 a minor change is allowed to break.
+    Caret(Version),
+    /// `=1.2.3`: exactly this version.
+    Exact(Version),
+    /// `>=1.2.0`: this version or any later one, later majors included.
+    AtLeast(Version),
+}
+
+/// Why a string is not a version range.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VersionReqError {
+    /// It does not begin with `^`, `=` or `>=`.
+    NoOperator,
+    /// What follows the operator is not a version.
+    Version(VersionError),
+}
+
+impl VersionReqError {
+    /// What the rule is, in one line.
+    pub const fn message(self) -> &'static str {
+        match self {
+            VersionReqError::NoOperator => {
+                "a version range is ^MAJOR.MINOR.PATCH, =MAJOR.MINOR.PATCH or >=MAJOR.MINOR.PATCH"
+            }
+            VersionReqError::Version(e) => e.message(),
+        }
+    }
+}
+
+impl fmt::Display for VersionReqError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.message())
+    }
+}
+
+impl VersionReq {
+    /// Whether `v` is in the range.
+    pub fn matches(&self, v: &Version) -> bool {
+        match *self {
+            VersionReq::Exact(b) => *v == b,
+            VersionReq::AtLeast(b) => *v >= b,
+            VersionReq::Caret(b) => {
+                *v >= b
+                    && if b.major > 0 {
+                        v.major == b.major
+                    } else if b.minor > 0 {
+                        v.major == 0 && v.minor == b.minor
+                    } else {
+                        *v == b
+                    }
+            }
+        }
+    }
+}
+
+impl FromStr for VersionReq {
+    type Err = VersionReqError;
+
+    fn from_str(s: &str) -> Result<Self, VersionReqError> {
+        let (make, rest): (fn(Version) -> VersionReq, &str) = if let Some(r) = s.strip_prefix(">=") {
+            (VersionReq::AtLeast, r)
+        } else if let Some(r) = s.strip_prefix('=') {
+            (VersionReq::Exact, r)
+        } else if let Some(r) = s.strip_prefix('^') {
+            (VersionReq::Caret, r)
+        } else {
+            return Err(VersionReqError::NoOperator);
+        };
+        rest.parse().map(make).map_err(VersionReqError::Version)
+    }
+}
+
+impl fmt::Display for VersionReq {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            VersionReq::Caret(v) => write!(f, "^{v}"),
+            VersionReq::Exact(v) => write!(f, "={v}"),
+            VersionReq::AtLeast(v) => write!(f, ">={v}"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -118,5 +206,36 @@ mod tests {
         ] {
             assert_eq!(s.parse::<Version>(), Err(e), "{s}");
         }
+    }
+
+    #[test]
+    fn ranges_read_and_match_as_written() {
+        let r = |s: &str| s.parse::<VersionReq>().unwrap();
+        let v = |s: &str| s.parse::<Version>().unwrap();
+        assert!(r("^1.2.0").matches(&v("1.2.0")) && r("^1.2.0").matches(&v("1.9.3")));
+        assert!(!r("^1.2.0").matches(&v("1.1.9")) && !r("^1.2.0").matches(&v("2.0.0")));
+        assert!(
+            r("^0.3.1").matches(&v("0.3.5")) && !r("^0.3.1").matches(&v("0.4.0")) && !r("^0.3.1").matches(&v("0.3.0"))
+        );
+        assert!(r("^0.0.3").matches(&v("0.0.3")) && !r("^0.0.3").matches(&v("0.0.4")));
+        assert!(r("=1.2.3").matches(&v("1.2.3")) && !r("=1.2.3").matches(&v("1.2.4")));
+        assert!(r(">=1.2.0").matches(&v("7.0.0")) && !r(">=1.2.0").matches(&v("1.1.9")));
+        for s in ["^1.2.0", "=1.2.3", ">=0.1.0"] {
+            assert_eq!(std::format!("{}", r(s)), s, "one range, one spelling");
+        }
+    }
+
+    #[test]
+    fn refuses_what_is_not_a_range() {
+        assert_eq!("1.2.0".parse::<VersionReq>(), Err(VersionReqError::NoOperator));
+        assert_eq!("~1.2.0".parse::<VersionReq>(), Err(VersionReqError::NoOperator));
+        assert_eq!(
+            "^1.2".parse::<VersionReq>(),
+            Err(VersionReqError::Version(VersionError::NotThreeParts))
+        );
+        assert_eq!(
+            ">=1.02.0".parse::<VersionReq>(),
+            Err(VersionReqError::Version(VersionError::LeadingZero))
+        );
     }
 }
