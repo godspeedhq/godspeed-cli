@@ -218,7 +218,7 @@ namespaces, index, manifest, signature, files ([docs/trust-metadata.md](docs/tru
 
     godspeed fetch godspeed/hello --offline [--arch x86_64|aarch64|armv7|riscv64|all]
 
-writes `hello-0.3.0.gsp`: every document that fetch read and checked - the roots from root 1, the timestamp,
+writes `hello-0.3.0.gsp` (`.gsp` for GodspeedOS Package): every document that fetch read and checked - the roots from root 1, the timestamp,
 snapshot, namespaces, the package's index, its manifest, signature and contract, and its binaries (all of them, or
 the one `--arch` names) - under the paths the registry serves them at, so a machine checks it exactly as it
 checks the registry, from the root it already trusts. On the machine, `godspeed install hello-0.3.0.gsp`.
