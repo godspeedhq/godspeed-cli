@@ -895,16 +895,27 @@ fn native_package_manager_verbs_point_at_the_right_program() {
 }
 
 /// The whole first half of the workflow on a real OS checkout: new, check, build for every
-/// architecture. Needs GODSPEED_OS, the pinned toolchain with its targets, and the network.
+/// architecture, for EVERY kind the OS runs - a template that does not build is a defect in the CLI, and
+/// until 2026-10-22 only the service's was built here. Needs GODSPEED_OS, the pinned toolchain with its
+/// targets, and the network.
 #[test]
 #[ignore = "needs GODSPEED_OS, the pinned toolchain and network access"]
-fn generated_service_builds_for_every_architecture() {
+fn every_generated_program_builds_for_every_architecture() {
     let os = PathBuf::from(std::env::var("GODSPEED_OS").expect("set GODSPEED_OS to a GodspeedOS checkout"));
-    let dir = scratch("e2e");
-    assert_eq!(code(&godspeed(&dir, Some(&os), &["new", "service", "hello"])), 0);
-    let p = dir.join("hello");
-    let o = godspeed(&p, Some(&os), &["build", "--all"]);
-    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    for kind in ["service", "utility", "app", "driver"] {
+        let dir = scratch(&format!("e2e_{kind}"));
+        assert_eq!(code(&godspeed(&dir, Some(&os), &["new", kind, "hello"])), 0, "{kind}: new");
+        let p = dir.join("hello");
+        let o = godspeed(&p, Some(&os), &["check"]);
+        assert_eq!(code(&o), 0, "{kind}: check: {}", stderr(&o));
+        let o = godspeed(&p, Some(&os), &["build", "--all"]);
+        assert_eq!(code(&o), 0, "{kind}: build: {}", stderr(&o));
+        built_for_every_architecture(kind, &p);
+    }
+}
+
+/// Each binary must be for the machine it claims, with a real entry point.
+fn built_for_every_architecture(kind: &str, p: &Path) {
     // (triple, ELF e_machine): each binary must be for the machine it claims, with a real entry point.
     for (triple, machine) in [
         ("x86_64-unknown-none", 0x3E),
@@ -913,20 +924,20 @@ fn generated_service_builds_for_every_architecture() {
         ("riscv64imac-unknown-none-elf", 0xF3),
     ] {
         let elf = std::fs::read(p.join("target").join(triple).join("release/hello")).unwrap();
-        assert_eq!(&elf[..4], b"\x7fELF", "{triple}: not an ELF");
-        assert_eq!(elf[5], 1, "{triple}: every Godspeed port is little-endian");
+        assert_eq!(&elf[..4], b"\x7fELF", "{kind} {triple}: not an ELF");
+        assert_eq!(elf[5], 1, "{kind} {triple}: every Godspeed port is little-endian");
         assert_eq!(
             u16::from_le_bytes([elf[18], elf[19]]),
             machine,
-            "{triple}: wrong machine"
+            "{kind} {triple}: wrong machine"
         );
         // An entry of 0 is what an unexported `service_main` produces: it links, then faults at boot.
         let entry = match elf[4] {
             1 => u64::from(u32::from_le_bytes(elf[24..28].try_into().unwrap())),
             2 => u64::from_le_bytes(elf[24..32].try_into().unwrap()),
-            c => panic!("{triple}: unknown ELF class {c}"),
+            c => panic!("{kind} {triple}: unknown ELF class {c}"),
         };
-        assert_ne!(entry, 0, "{triple}: entry point is 0");
+        assert_ne!(entry, 0, "{kind} {triple}: entry point is 0");
     }
 }
 

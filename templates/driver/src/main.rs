@@ -9,6 +9,7 @@
 #![no_std]
 #![no_main]
 
+use godspeed::driver::wait::{self, Budget};
 use godspeed::{self as gs, ServiceContext};
 
 /// `edu`'s registers, as offsets into BAR 0.
@@ -25,7 +26,8 @@ const COMPUTING: u32 = 1;
 #[allow(unsafe_code)]
 #[no_mangle]
 pub extern "C" fn {{entry}}(ctx: ServiceContext) -> ! {
-    let Some(regs) = ctx.mmio() else {
+    // The register window the supervisor granted: `None` when no device was, and then there is nothing to drive.
+    let Some(regs) = gs::driver::registers(&ctx) else {
         ctx.log("{{name}}: no device was granted - nothing to drive");
         gs::ipc::park(&ctx)
     };
@@ -33,11 +35,11 @@ pub extern "C" fn {{entry}}(ctx: ServiceContext) -> ! {
     regs.write32(LIVENESS, 0x1234_5678);
     let alive = regs.read32(LIVENESS) == !0x1234_5678u32;
     regs.write32(FACTORIAL, 5);
-    // A bounded wait: the device answers in microseconds, and one that never does is said, not waited on forever.
-    let mut tries = 0u32;
-    while regs.read32(STATUS) & COMPUTING != 0 && tries < 1000 {
-        gs::task::sleep_ms(&ctx, 1);
-        tries += 1;
+    // A bounded wait, by TIME: the device answers in microseconds, and one that never does is said, not waited on
+    // forever. `gs::driver::wait` measures the budget on the machine's own clock.
+    if wait::until(&ctx, Budget::ms(10), || regs.read32(STATUS) & COMPUTING == 0).is_err() {
+        ctx.log("{{name}}: the device did not finish 5! within 10 ms - it is not answering");
+        gs::ipc::park(&ctx)
     }
     let five = regs.read32(FACTORIAL);
     ctx.log_fmt(format_args!("{{name}}: device id {:#010x}, alive {}, 5! = {}", id, alive, five));
