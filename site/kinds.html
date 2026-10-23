@@ -99,10 +99,10 @@ let args = gs::program::args(&amp;ctx, &amp;mut buf);
 let mut out = gs::program::Output::new(&amp;ctx);
 let _ = writeln!(out, "hello, {}", if args.is_empty() { "world" } else { args });
 out.finish(0)</pre>
-<pre><span class="p">gsh&gt; </span>greet Ada
-<span class="o">hello, Ada</span>
-<span class="p">gsh&gt; </span>greet Ada | count
-<span class="o">1 line, 2 words, 11 bytes</span></pre>
+<pre><span class="p">gsh&gt; </span>greet Bankole
+<span class="o">hello, Bankole</span>
+<span class="p">gsh&gt; </span>greet Bankole | count
+<span class="o">1 line, 2 words, 15 bytes</span></pre>
     <ul>
       <li><strong>Given:</strong> its arguments and an output stream, through <code>gs::program</code>. It ends with
       <code>finish(status)</code> or <code>gs::program::exit</code>, and is never restarted for it.</li>

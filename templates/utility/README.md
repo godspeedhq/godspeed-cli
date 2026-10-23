@@ -22,6 +22,6 @@ Package and publish it (`godspeed package`, `godspeed publish`), then on a Godsp
 
     godspeed fetch <publisher>/{{name}}
     godspeed install <publisher>/{{name}}
-    {{name}} Ada                   # prints "hello, Ada"; `{{name}} Ada | count` pipes it
+    {{name}} Bankole               # prints "hello, Bankole"; `{{name}} Bankole | count` pipes it
 
 The shell says the status it ended with when it is not 0.

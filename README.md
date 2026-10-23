@@ -114,7 +114,7 @@ Its source is [`site/`](site/), plain HTML published by `.github/workflows/pages
 | kind | what it is | template |
 |---|---|---|
 | `service` | kept running by the system: started at every boot, restarted if it dies, upgraded live if its contract declares `handover` | `godspeed new service clock`: logs that it started, then waits |
-| `utility` | does one job when typed at `gsh>`, ends with a status, takes arguments and pipes (`gs::program`) | `godspeed new utility greet`: `greet Ada` prints `hello, Ada` |
+| `utility` | does one job when typed at `gsh>`, ends with a status, takes arguments and pipes (`gs::program`) | `godspeed new utility greet`: `greet Bankole` prints `hello, Bankole` |
 | `app` | has the screen and the keyboard while it runs, and gives them back when it ends (`gs::app`); the operator approves the console at install | `godspeed new app notes`: says hello until a key is pressed |
 | `driver` | drives one device, named in its contract by PCI class code and register BAR, given that device's register window only, written on `gs::driver` (`registers`, `wait`, `delay`) like the OS's own drivers; **needs GodspeedOS 0.30.0** | `godspeed new driver sensor`: drives QEMU's `edu` and logs `5! = 120` |
 | `library` | reusable `no_std` Rust for the others; never installed, and its tests run on your workstation | `godspeed new library parser` |

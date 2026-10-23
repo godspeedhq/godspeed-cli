@@ -8,7 +8,7 @@ installed and run on a real GodspeedOS.
 
 ```sh
 godspeed new driver sensor        # 🔌 now on gs::driver::registers and gs::driver::wait
-godspeed new utility greet        # 🔧 greet Ada  ->  hello, Ada
+godspeed new utility greet        # 🔧 greet Bankole  ->  hello, Bankole
 godspeed new app notes            # 🖼️ the screen is yours until a key
 godspeed new service clock        # ⚙️ kept running by the system
 godspeed new library parser       # 📚 shared, tested on your workstation
