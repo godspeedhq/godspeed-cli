@@ -115,7 +115,8 @@ Install all 2 and grant them? (no privilege) [y/N]:
 
 - 🔌 A driver package is given its device's **registers only**: no DMA arena and no interrupt yet.
 - 📴 `godspeed fetch --offline` does not yet carry a package's requirements in the same file: install each
-  requirement from its own file first, then the package (that order works today).
+  requirement from its own file first, then the package (that order works today). One file for all of them is
+  recorded as backlog item 3.
 - ▶️ `godspeed run` and `godspeed test` for a program: there is no public way yet to boot a machine with your
   program on it, so the CLI says so instead of pretending.
 
