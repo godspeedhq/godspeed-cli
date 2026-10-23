@@ -2,14 +2,14 @@
 
 A request/reply server: send it text and it answers in capitals. The shape of every Godspeed server - receive, reply over the capability the request carries, give that capability back.
 
-A Godspeed service, created by `godspeed new service shout` against GodspeedOS v0.29.0.
+A Godspeed service, created by `godspeed new service shout` against GodspeedOS v0.29.0, and built against v0.30.0 since.
 
 ## Files
 
 - `src/main.rs` - the service. It starts at `service_main` and never returns.
 - `contracts/shout.toml` - the authority the service **requests**. It grants nothing; the OS decides.
 - `godspeed.toml` - what kind of project this is, for the `godspeed` CLI.
-- `rust-toolchain.toml` - the compiler GodspeedOS v0.29.0 is built with.
+- `rust-toolchain.toml` - the compiler GodspeedOS v0.30.0 is built with.
 
 ## Build
 

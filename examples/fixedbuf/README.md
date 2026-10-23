@@ -2,7 +2,7 @@
 
 Text built into a fixed-size buffer, for programs with no heap: a `core::fmt::Write` over an array that refuses, and says so, when text does not fit. Its tests run on your workstation.
 
-A Godspeed library, created by `godspeed new library fixedbuf` against GodspeedOS v0.29.0.
+A Godspeed library, created by `godspeed new library fixedbuf` against GodspeedOS v0.29.0, and built against v0.30.0 since.
 
     godspeed check                 # validate the project
     godspeed test                  # run the tests on this machine

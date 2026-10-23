@@ -2,14 +2,14 @@
 
 Logs how long the machine has been up, every five seconds: a service main loop that sleeps rather than spins, and a formatted log line with no heap.
 
-A Godspeed service, created by `godspeed new service heartbeat` against GodspeedOS v0.29.0.
+A Godspeed service, created by `godspeed new service heartbeat` against GodspeedOS v0.29.0, and built against v0.30.0 since.
 
 ## Files
 
 - `src/main.rs` - the service. It starts at `service_main` and never returns.
 - `contracts/heartbeat.toml` - the authority the service **requests**. It grants nothing; the OS decides.
 - `godspeed.toml` - what kind of project this is, for the `godspeed` CLI.
-- `rust-toolchain.toml` - the compiler GodspeedOS v0.29.0 is built with.
+- `rust-toolchain.toml` - the compiler GodspeedOS v0.30.0 is built with.
 
 ## Build
 

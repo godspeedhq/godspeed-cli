@@ -14,6 +14,7 @@
     <a class="brand" href="./"><span class="mark">g</span>Godspeed CLI</a>
     <nav class="main">
       <a href="./">Overview</a>
+      <a href="kinds.html">Make</a>
       <a href="examples.html" aria-current="page">Examples</a>
       <a href="publishing.html">Publishing</a>
       <a href="reference.html">Reference</a>
@@ -27,7 +28,8 @@
   <h1>Examples</h1>
   <p class="lede">Real projects, each started with <code>godspeed new</code> and written only against the
   public standard library, <code>gs</code>. CI builds every one for x86_64, aarch64, armv7 and riscv64
-  against GodspeedOS v0.29.0, so none of this is code that does not compile.</p>
+  against GodspeedOS v0.30.0, so none of this is code that does not compile. For a utility, an app or a
+  driver, <a href="kinds.html">What you can make</a> starts from each template.</p>
 
   <div class="grid">
     <a class="card" href="#hello"><h3>hello</h3><p>The template itself: the smallest valid service.</p></a>
@@ -38,9 +40,9 @@
   </div>
 
   <div class="note">
-    <p><strong>They build, package and publish today. None can run yet.</strong> GodspeedOS starts only the
-    services compiled into its own image, and has no public way yet to add one from outside its source tree.
-    <code>godspeed run</code> says so rather than editing the OS for you. Running them waits on the OS.</p>
+    <p><strong>They build, package, publish and install.</strong> Publish one, then at a Godspeed machine's
+    <code>gsh&gt;</code> prompt, <code>godspeed install &lt;you&gt;/heartbeat</code>. <code>godspeed run</code>, which
+    would boot a machine with it from your workstation, still waits on the OS.</p>
   </div>
 
   <p>The source of every example is in
@@ -49,7 +51,7 @@
 <pre><span class="p">$ </span>git clone https://github.com/godspeedhq/godspeed-cli
 <span class="p">$ </span>cd godspeed-cli/examples/heartbeat
 <span class="p">$ </span>godspeed check
-<span class="o">service heartbeat is valid against GodspeedOS v0.29.0.</span>
+<span class="o">service heartbeat is valid against GodspeedOS v0.30.0.</span>
 <span class="p">$ </span>godspeed build --all
 <span class="o">Built x86_64 target/x86_64-unknown-none/release/heartbeat
 Built aarch64 target/aarch64-unknown-none/release/heartbeat
@@ -342,7 +344,7 @@ ipc_send  = ["fs"]    # ask the filesystem service for files</pre>
 <span class="c"># The fixedbuf library from this repository, beside this project.</span>
 fixedbuf = { path = "../fixedbuf" }
 <span class="c"># The Godspeed standard library, at the OS release this project was created against.</span>
-godspeed = { git = "https://github.com/godspeedhq/godspeed-os", tag = "v0.29.0" }</pre>
+godspeed = { git = "https://github.com/godspeedhq/godspeed-os", tag = "v0.30.0" }</pre>
   </section>
 
   <section class="example" id="fixedbuf">
@@ -520,14 +522,12 @@ mod tests {
   <h2 id="not-yet">What you cannot build yet, and why</h2>
   <div class="table-scroll"><table>
     <tr><th>You want</th><th>What is missing in GodspeedOS</th></tr>
-    <tr><td>A command-line tool that runs and exits</td><td>A terminating task: no <code>fn main()</code>, no exit call. Every program is a service that never returns.</td></tr>
-    <tr><td>An app with a user interface</td><td>Public application interfaces.</td></tr>
-    <tr><td>A driver for a device</td><td>A way to grant a device to a driver built outside the OS tree.</td></tr>
-    <tr><td>A network client or server</td><td><code>gs::net</code> exists and an example would compile, but nothing yet grants an outside service access to the network stack.</td></tr>
+    <tr><td>A driver that moves data by DMA, or takes an interrupt</td><td>A driver package is given its device's registers only. The OS's own drivers have DMA arenas and interrupts; a package does not, yet.</td></tr>
+    <tr><td>An app with windows or graphics</td><td>An app has the console's grid of text, and nothing beyond it.</td></tr>
+    <tr><td>A network client or server</td><td><code>gs::net</code> exists and an example would compile, but nothing yet grants an outside program access to the network stack.</td></tr>
     <tr><td>A program in C, C++ or Go</td><td>A non-Rust interface to the OS. <a href="./#languages">More</a>.</td></tr>
   </table></div>
-  <p>The CLI refuses these kinds with the reason rather than generating a project that pretends. Each is the
-  OS's to build, and the CLI will follow.</p>
+  <p>Each is the OS's to build, and the CLI will follow. Until then it makes no template that pretends.</p>
 </main>
 
 <footer class="site">

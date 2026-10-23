@@ -90,7 +90,7 @@ jobs:
       matrix:
         # The GodspeedOS releases the templates are proven against. Add a release here when the CLI
         # starts supporting it; a template that only works against an unreleased OS is not shippable.
-        os_ref: [v0.29.0]
+        os_ref: [v0.30.0]
     steps:
       - uses: actions/checkout@v5
 

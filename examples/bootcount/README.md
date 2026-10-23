@@ -2,14 +2,14 @@
 
 Counts how many times the machine has started, in a file: the filesystem through the standard library, a library dependency (`../fixedbuf`), and a write whose outcome may be unknown, reported as exactly that.
 
-A Godspeed service, created by `godspeed new service bootcount` against GodspeedOS v0.29.0.
+A Godspeed service, created by `godspeed new service bootcount` against GodspeedOS v0.29.0, and built against v0.30.0 since.
 
 ## Files
 
 - `src/main.rs` - the service. It starts at `service_main` and never returns.
 - `contracts/bootcount.toml` - the authority the service **requests**. It grants nothing; the OS decides.
 - `godspeed.toml` - what kind of project this is, for the `godspeed` CLI.
-- `rust-toolchain.toml` - the compiler GodspeedOS v0.29.0 is built with.
+- `rust-toolchain.toml` - the compiler GodspeedOS v0.30.0 is built with.
 
 ## Build
 

@@ -45,7 +45,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Create a new project: `service`, `utility` or `library`
+    /// Create a new project: `service`, `utility`, `app`, `driver` or `library`
     New {
         /// service | library
         kind: String,

@@ -325,7 +325,9 @@ fn run_and_service_test_say_the_os_cannot_do_it_yet() {
     for args in [&["run"][..], &["run", "--target", "hardware"], &["test"]] {
         let o = godspeed(&p, Some(&os), args);
         assert_eq!(code(&o), 20, "{args:?}");
-        assert!(stderr(&o).contains("supervisor"), "{args:?}");
+        // The reason names what is missing (booting a machine with the program on it) and how to run it today.
+        assert!(stderr(&o).contains("boot one"), "{args:?}");
+        assert!(stderr(&o).contains("godspeed install"), "{args:?}");
     }
 }
 
@@ -904,7 +906,11 @@ fn every_generated_program_builds_for_every_architecture() {
     let os = PathBuf::from(std::env::var("GODSPEED_OS").expect("set GODSPEED_OS to a GodspeedOS checkout"));
     for kind in ["service", "utility", "app", "driver"] {
         let dir = scratch(&format!("e2e_{kind}"));
-        assert_eq!(code(&godspeed(&dir, Some(&os), &["new", kind, "hello"])), 0, "{kind}: new");
+        assert_eq!(
+            code(&godspeed(&dir, Some(&os), &["new", kind, "hello"])),
+            0,
+            "{kind}: new"
+        );
         let p = dir.join("hello");
         let o = godspeed(&p, Some(&os), &["check"]);
         assert_eq!(code(&o), 0, "{kind}: check: {}", stderr(&o));

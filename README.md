@@ -61,7 +61,7 @@ uninstall godspeed-cli` instead.
 
 Or build it yourself with Rust:
 
-    cargo install --git https://github.com/godspeedhq/godspeed-cli --tag cli-v0.3.0 --locked godspeed-cli
+    cargo install --git https://github.com/godspeedhq/godspeed-cli --tag cli-v0.4.0 --locked godspeed-cli
 
 A checksum proves a download is the file the release lists; releases are not signed yet.
 
@@ -96,6 +96,8 @@ The guide is at **[godspeedhq.github.io/godspeed-cli](https://godspeedhq.github.
 
 - [Overview](https://godspeedhq.github.io/godspeed-cli/): what you can build, getting started, what works
   and what waits
+- [What you can make](https://godspeedhq.github.io/godspeed-cli/kinds.html): one guide for each kind - service,
+  utility, app, driver and library - from `godspeed new` to a Godspeed machine
 - [Examples](https://godspeedhq.github.io/godspeed-cli/examples.html): real services and a library, with
   their source, each built for every architecture in CI
 - [Publishing](https://godspeedhq.github.io/godspeed-cli/publishing.html): your key and token, CI, and
@@ -109,21 +111,23 @@ Its source is [`site/`](site/), plain HTML published by `.github/workflows/pages
 
     godspeed new <kind> <name>
 
-| kind | what it is | today |
+| kind | what it is | template |
 |---|---|---|
-| `service` | a managed program with a lifecycle that requests its authority in a contract - every runnable Godspeed program is one | **works**: `godspeed new service clock` |
-| `library` | reusable `no_std` Rust for other Godspeed projects; not run on its own, and its tests run on your workstation | **works**: `godspeed new library parser` |
-| `utility` | a program that does one job and ends | refused: GodspeedOS has no terminating task yet (no `fn main()`, no exit) |
-| `app` | a user-facing program | refused: GodspeedOS has no public application interfaces yet |
-| `driver` | a userspace driver for a device | refused: a driver built outside the OS tree has no way yet to be granted a device |
+| `service` | kept running by the system: started at every boot, restarted if it dies, upgraded live if its contract declares `handover` | `godspeed new service clock`: logs that it started, then waits |
+| `utility` | does one job when typed at `gsh>`, ends with a status, takes arguments and pipes (`gs::program`) | `godspeed new utility greet`: `greet Ada` prints `hello, Ada` |
+| `app` | has the screen and the keyboard while it runs, and gives them back when it ends (`gs::app`); the operator approves the console at install | `godspeed new app notes`: says hello until a key is pressed |
+| `driver` | drives one device, named in its contract by PCI class code and register BAR, given that device's register window only, written on `gs::driver` (`registers`, `wait`, `delay`) like the OS's own drivers; **needs GodspeedOS 0.30.0** | `godspeed new driver sensor`: drives QEMU's `edu` and logs `5! = 120` |
+| `library` | reusable `no_std` Rust for the others; never installed, and its tests run on your workstation | `godspeed new library parser` |
 
-A kind is offered only once GodspeedOS can run it. Ask for one it cannot and the CLI says what is missing,
-where the OS tracks it, and what to make instead (exit 20) - never a template that pretends. The
-[examples](examples/) show what a service and a library can do today.
+Every template is written on the public standard library, `gs`, and nothing below it. CI makes, checks and builds
+every kind for all four architectures (`tests/cli.rs`, `every_generated_program_builds_for_every_architecture`),
+and GodspeedOS installs each of the four program templates from a package file and sees it work
+(`osdev test kinds` there). A kind the OS cannot run would be refused with the reason, never given a template that
+pretends. The [guide](https://godspeedhq.github.io/godspeed-cli/kinds.html) takes each kind end to end.
 
 ## Use
 
-    godspeed new service hello
+    godspeed new service hello     # or utility, app, driver, library
     cd hello
     godspeed check
     godspeed build                 # x86_64
@@ -143,33 +147,34 @@ every architecture in CI and explained on the [examples page](https://godspeedhq
 
 | command | status |
 |---|---|
-| `new service`, `new library` | works |
-| `new utility`, `new app`, `new driver` | refused: GodspeedOS cannot run that kind yet, and the refusal says why |
+| `new service`, `new utility`, `new app`, `new driver`, `new library` | works (a driver against GodspeedOS 0.30.0 or later) |
 | `check` | works: the project, its toolchain pin, its stdlib release, and the contract against the OS's schema |
-| `build [--arch <isa> \| --all]` | works: one ELF per architecture for a service, an rlib for a library |
-| `test` | works for a library (on the host); refused for a service (see below) |
+| `build [--arch <isa> \| --all]` | works: one ELF per architecture for a program, an rlib for a library |
+| `test` | works for a library (on the host); refused for a program, which runs only on a Godspeed machine (see below) |
 | `doctor` | works |
 | `completions <shell>` | works: tab completion for bash, zsh, fish, PowerShell and elvish (`godspeed completions --help` says how to load it) |
 | `self update`, `self uninstall` | work: update this CLI to the latest release, verified before it replaces anything; or remove it and what the installer added, keeping your keys |
 | `package [--arch <isa>] [--out <dir>]` | works: builds every architecture, writes a package directory, and verifies it from disk before reporting it |
 | `verify <dir>` | works, with no OS checkout: checks every file against the manifest, and says it proves integrity only |
-| `run` | refused: GodspeedOS has no public way to run a service built outside its tree |
+| `run` | refused: there is no public way yet to boot a Godspeed machine with your program on it |
 | `key generate`, `key show` | work: an Ed25519 signing key, made and kept on this machine; only the public half is ever shared |
 | `sign <dir>` | works: signs a package directory (`manifest.sig`) and verifies the result; `publish` does it for you |
 | `fetch <publisher/name>[@version]` | works: downloads a release and verifies it through the registry's whole chain of trust before keeping it |
 | `login`, `whoami`, `logout` | work: a publisher token for a registry, checked with it before it is stored; `logout` revokes it there |
-| `publish` | works: packages every architecture, then reserves, uploads and finalises; if finalising gets no answer it reads the registry's index and reports what it finds, and running it again is always safe |
+| `publish` | works: packages every architecture, then reserves, uploads and finalises; if finalising gets no answer it reads the registry's index and reports what it finds, and running it again is always safe; a package whose `[requires]` names a release the registry does not have is refused before anything is uploaded |
 | `install`, `search`, `info`, `list`, `update`, `uninstall` | belong to the native package manager on a Godspeed machine, and say so |
 
-Running a service needs an OS build interface that takes a crate from outside the OS tree. Until
-GodspeedOS has one, `godspeed run` says so rather than editing the OS for you.
+A program runs on a Godspeed machine once it is installed there: publish it and `godspeed install` at the
+machine's `gsh>` prompt, or `godspeed package --local` and install the `.gsp` file. What `godspeed run` would add -
+booting a machine in QEMU or on hardware with your program already on it - needs an OS interface that does not
+exist yet, so it says so rather than building the OS image for you.
 
 ## A project
 
     godspeed.toml            what kind of project this is, where its contract is, and the publisher,
                              description and license a package of it carries
     Cargo.toml               how Rust builds it; depends on the `godspeed` stdlib at an OS release tag
-    contracts/<name>.toml    (services) the OS service contract: the authority the service REQUESTS
+    contracts/<name>.toml    (programs) the OS contract: the authority the program REQUESTS
                              [requires] in godspeed.toml: other packages it needs installed, e.g.
                              "alice/notes-store" = "^1.2.0" - never a built-in such as fs
     rust-toolchain.toml      the compiler that OS release is built with
