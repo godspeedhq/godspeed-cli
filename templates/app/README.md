@@ -22,6 +22,6 @@ Package and publish it, then on a Godspeed machine:
 
     godspeed fetch <publisher>/{{name}}
     godspeed install <publisher>/{{name}}
-    {{name}} Ada                   # the screen says "hello, Ada" until a key is pressed
+    {{name}} Bankole               # the screen says "hello, Bankole" until a key is pressed
 
 An app cannot start a pipe: it has the screen, not a stream.
