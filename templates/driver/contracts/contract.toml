@@ -19,5 +19,6 @@ hw_pci_class = "00ff00"
 hw_pci_bar   = 0      # its registers are in BAR 0
 hw_pci_irq   = true   # its interrupt: the OS picks the vector and programs the device; you never name one
 # A DMA arena: memory the device reads and writes by itself, as a size (at most 2MiB). The operator is asked
-# about it on its own, because where no IOMMU confines the device its driver can reach all of memory.
+# about it on its own, on every machine, because where no IOMMU confines the device (every Raspberry Pi and the
+# VisionFive, an Intel PC, a PC device left in passthrough) its driver can reach all of memory.
 hw_dma       = "8KiB"

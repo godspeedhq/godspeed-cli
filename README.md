@@ -147,7 +147,7 @@ every architecture in CI and explained on the [examples page](https://godspeedhq
 
 | command | status |
 |---|---|
-| `new service`, `new utility`, `new app`, `new driver`, `new library` | works (a driver against GodspeedOS 0.30.0 or later) |
+| `new service`, `new utility`, `new app`, `new driver`, `new library` | works (a driver against GodspeedOS 0.30.0 or later for its registers; the template, which asks for an interrupt and DMA, against the release after v0.30.0) |
 | `check` | works: the project, its toolchain pin, its stdlib release, and the contract against the OS's schema |
 | `build [--arch <isa> \| --all]` | works: one ELF per architecture for a program, an rlib for a library |
 | `test` | works for a library (on the host); refused for a program, which runs only on a Godspeed machine (see below) |

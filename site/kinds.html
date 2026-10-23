@@ -152,14 +152,22 @@ match irq.wait(&amp;ctx, Budget::ms(1000)) {      // bounded by time, never by a
       <li><strong>Given</strong>, all through <code>gs::driver</code>, the library every driver in GodspeedOS is
       written on: its device's register window (<code>registers</code>), its interrupt when the contract asks
       (<code>irq</code>), and a DMA arena when the contract asks and the operator agrees (<code>arena</code>, at most
-      2 MiB). Where no IOMMU confines the device - no Raspberry Pi or VisionFive has one - a driver with an arena
-      can reach all of memory, so the install asks about it by a question of its own.</li>
+      2 MiB). Where no IOMMU confines the device - every Raspberry Pi and the VisionFive, an Intel PC, and any PC
+      device the kernel leaves in passthrough - a driver with an arena can reach all of memory, so the install asks
+      about it by a question of its own (<code>memory</code>, beside <code>device</code>), on every machine.</li>
+      <li><strong><code>gs::driver</code>, and the SDK.</strong> <code>gs::driver</code> is the way to write one and
+      the part the compatibility promise covers; a driver may also call the SDK (<code>godspeed_sdk</code>), which
+      refuses nothing and grants nothing, but may change between releases. A gap in <code>gs::driver</code> is
+      closed there when a real driver needs it.</li>
       <li><strong>A device GodspeedOS already drives</strong> is taken over: installing the package stops the OS's
       driver for that device, and uninstalling it starts that driver again.</li>
       <li><strong>A USB device</strong> has no registers of its own, so its driver names it by
-      <code>hw_usb = "0403:6001"</code> and reaches it through its host with <code>gs::driver::bus</code>: its
-      identity, control transfers, bulk OUT and bulk IN. It is started while the device is attached. The host binds
-      a vendor-specific device (interface class 0xFF), one at a time; on the Raspberry Pi 2 it must be high-speed.</li>
+      <code>hw_usb = "0403:6001"</code>, with no interrupt or DMA of its own (they are its host's), and reaches it
+      through its host with <code>gs::driver::bus</code>: who it is and where, control transfers, bulk OUT and bulk
+      IN, and a replug request. It is started while the device is attached. Its host binds one vendor-specific
+      device (interface class 0xFF) per host: <code>xhci</code> on the PCs, the Pi 4 and the VisionFive;
+      <code>dwc2</code> on the Pi 2, high-speed only; <code>ehci</code> on the T630's back sockets, which sends no
+      notice, so a driver there asks for a bulk IN again.</li>
       <li>The template drives QEMU's <code>edu</code> (<code>-device edu</code>) by all three grants: installed, it
       logs <code>device id 0x010000ed, alive true, 5! = 120 by interrupt, 64 bytes through DMA and back intact</code>.</li>
       <li><strong>The interrupt, the arena, a device taken over and a USB device need the GodspeedOS release after
