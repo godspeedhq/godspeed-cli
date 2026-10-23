@@ -60,6 +60,12 @@ fn stream(path: &Path, expected: pkg::Artifact) -> std::io::Result<std::result::
     }
 }
 
+/// What a release requires installed, e.g. `alice/store ^1.2.0`: shown, never granted (GodspeedOS
+/// `docs/developer-services-design.md` 16).
+pub fn requires(m: &pkg::Manifest<'_>) -> Vec<String> {
+    m.requires.iter().map(|r| format!("{} {}", r.name(), r.range)).collect()
+}
+
 /// Summarise what a contract requests, e.g. `log_write`, `ipc_send = fs`.
 fn requests(contract: &toml::Table) -> Vec<String> {
     let Some(caps) = contract.get("capabilities").and_then(|c| c.as_table()) else {

@@ -14,6 +14,7 @@
     <a class="brand" href="./"><span class="mark">g</span>Godspeed CLI</a>
     <nav class="main">
       <a href="./" aria-current="page">Overview</a>
+      <a href="kinds.html">Make</a>
       <a href="examples.html">Examples</a>
       <a href="publishing.html">Publishing</a>
       <a href="reference.html">Reference</a>
@@ -40,47 +41,41 @@
   </section>
 
   <h2 id="what">What you can build today</h2>
-  <p>Godspeed has five kinds of project. The CLI makes a template only for a kind the OS can actually run, and
-  says plainly why the others must wait - it never generates a project that cannot do what its kind
-  promises.</p>
+  <p>Godspeed has five kinds of project, and every one has a template. Each is a different answer to whose
+  life the program lives; <a href="kinds.html">What you can make</a> takes each kind from
+  <code>godspeed new</code> to a Godspeed machine.</p>
   <div class="grid">
-    <div class="card">
+    <a class="card" href="kinds.html#service">
       <h3>Service <span class="tag ok">works</span></h3>
-      <p>A managed program with a lifecycle and a declared request for authority. Every runnable program on
-      Godspeed is a service today.</p>
+      <p>Kept running by the system: started at every boot, restarted if it dies, upgraded live if it
+      declares <code>handover</code>.</p>
       <p><code>godspeed new service clock</code></p>
-    </div>
-    <div class="card">
+    </a>
+    <a class="card" href="kinds.html#utility">
+      <h3>Utility <span class="tag ok">works</span></h3>
+      <p>Does one job when typed and ends with a status. It takes arguments and pipes like a built-in.</p>
+      <p><code>godspeed new utility greet</code></p>
+    </a>
+    <a class="card" href="kinds.html#app">
+      <h3>App <span class="tag ok">works</span></h3>
+      <p>Has the screen and the keyboard while it runs, and gives them back when it ends.</p>
+      <p><code>godspeed new app notes</code></p>
+    </a>
+    <a class="card" href="kinds.html#driver">
+      <h3>Driver <span class="tag ok">works</span></h3>
+      <p>Drives one device, named by its PCI class, written on <code>gs::driver</code> like the OS's own
+      drivers.</p>
+      <p><code>godspeed new driver sensor</code></p>
+    </a>
+    <a class="card" href="kinds.html#library">
       <h3>Library <span class="tag ok">works</span></h3>
-      <p>Reusable <code>no_std</code> Rust for other Godspeed projects. Its tests run on your workstation.</p>
+      <p>Reusable <code>no_std</code> Rust for the others. Its tests run on your workstation.</p>
       <p><code>godspeed new library parser</code></p>
-    </div>
-    <div class="card">
-      <h3>Utility <span class="tag no">waits on the OS</span></h3>
-      <p>A program that does one job and ends. GodspeedOS has no terminating task yet.</p>
-    </div>
-    <div class="card">
-      <h3>App <span class="tag no">waits on the OS</span></h3>
-      <p>A user-facing program. There are no public application interfaces yet.</p>
-    </div>
-    <div class="card">
-      <h3>Driver <span class="tag no">waits on the OS</span></h3>
-      <p>A userspace driver. A driver from outside the OS tree has no way yet to be granted a device.</p>
-    </div>
+    </a>
   </div>
-  <p>Ask for one that must wait and you get the reason, where the OS tracks it, and what to do instead:</p>
-<pre><span class="p">$ </span>godspeed new utility status
-<span class="o">Cannot create a utility project
-Stage: validation
-Reason:
-  A utility is a program that does one job and ends. GodspeedOS has no terminating task yet: every
-  program is a service that never returns, and there is no way for a program to end itself.
-Expected:
-  tracked in GodspeedOS docs/stdlib-design.md, section 1 (options A and B)
-Next:
-  Create a `service` instead - every runnable program on Godspeed is a service today.</span></pre>
-  <p><a href="examples.html">The examples</a> show real services and libraries, each built for every
-  architecture in CI.</p>
+  <p>A service, a utility and an app build against GodspeedOS v0.29.0 or later; a driver against v0.30.0 or
+  later. CI makes, checks and builds every kind for all four architectures, and
+  <a href="examples.html">the examples</a> are built the same way.</p>
 
   <h2 id="start">Get started</h2>
   <ol class="steps">
@@ -94,7 +89,7 @@ Next:
       <p>Each installs a prebuilt binary for Linux, macOS or Windows (x86_64 or Arm64) to
       <code>~/.godspeed/bin</code>, after checking it against the release's checksums - a mismatch installs
       nothing. <code>godspeed self update</code> updates it, with the same checks, and the CLI tells you, at
-      most once a day, when there is a newer release. Or build it yourself: <code>cargo install --git https://github.com/godspeedhq/godspeed-cli --tag cli-v0.3.0 --locked godspeed-cli</code>.</p>
+      most once a day, when there is a newer release. Or build it yourself: <code>cargo install --git https://github.com/godspeedhq/godspeed-cli --tag cli-v0.4.0 --locked godspeed-cli</code>.</p>
     </li>
     <li>
       <h3>Check your setup</h3>
@@ -102,8 +97,8 @@ Next:
       files that describe it - its pinned compiler, targets, linker script and contract schema - the first
       time, then keeps them.</p>
 <pre><span class="p">$ </span>godspeed doctor
-<span class="o">Fetching the GodspeedOS 0.29.0 platform kit (once for each release)...
-GodspeedOS                 ok       0.29.0 (platform kit from 37092b09dfd1, cached in ~/.cache/godspeed/platform/0.29.0)
+<span class="o">Fetching the GodspeedOS 0.30.0 platform kit (once for each release)...
+GodspeedOS                 ok       0.30.0 (platform kit, cached in ~/.cache/godspeed/platform/0.30.0)
 Rust toolchain             ok       nightly-2026-05-16</span></pre>
       <p><code>doctor</code> checks the toolchain, all four targets and QEMU, and prints the command that
       fixes anything missing. Working on GodspeedOS itself? <code>--os &lt;path&gt;</code> builds against your
@@ -112,10 +107,10 @@ Rust toolchain             ok       nightly-2026-05-16</span></pre>
     <li>
       <h3>Create and build</h3>
 <pre><span class="p">$ </span>godspeed new service hello
-<span class="o">Created service hello in hello (GodspeedOS v0.29.0)</span>
+<span class="o">Created service hello in hello (GodspeedOS v0.30.0)</span>
 <span class="p">$ </span>cd hello
 <span class="p">$ </span>godspeed check
-<span class="o">service hello is valid against GodspeedOS v0.29.0.</span>
+<span class="o">service hello is valid against GodspeedOS v0.30.0.</span>
 <span class="p">$ </span>godspeed build
 <span class="o">Validating project...
 Fetching dependencies...
@@ -128,7 +123,7 @@ These are service binaries, not an OS image; nothing was installed or run.</span
     <li>
       <h3>Package it, and look before anything leaves your machine</h3>
 <pre><span class="p">$ </span>godspeed package
-<span class="o">Verified alice/hello 0.1.0 (service), built against GodspeedOS 0.29.0
+<span class="o">Verified alice/hello 0.1.0 (service), built against GodspeedOS 0.30.0
   contract.toml              sha256:762be027...
                  requests: log_write
   x86_64.elf        18952 B  sha256:2f3fa20d...
@@ -145,17 +140,19 @@ What the contract requests is not granted by installing it.</span></pre>
   </ol>
 
   <h2 id="status">What works, and what waits</h2>
-  <p>The first half of the workflow works end to end, against the live registry. The second half needs
-  things only the OS can provide, and the CLI will not paper over them.</p>
+  <p>The whole path works, from <code>godspeed new</code> to a program running on a Godspeed machine, against
+  the live registry. What still waits needs something only the OS can provide, and the CLI will not paper
+  over it.</p>
   <div class="table-scroll"><table>
     <tr><th>Step</th><th>Status</th></tr>
-    <tr><td>Create, check, build for every architecture</td><td><span class="tag ok">works</span></td></tr>
+    <tr><td>Create, check, build every kind for every architecture</td><td><span class="tag ok">works</span></td></tr>
     <tr><td>Test a library</td><td><span class="tag ok">works</span></td></tr>
-    <tr><td>Package, sign, verify</td><td><span class="tag ok">works</span></td></tr>
+    <tr><td>Package, sign, verify; a <code>.gsp</code> file for a machine with no network</td><td><span class="tag ok">works</span></td></tr>
     <tr><td>Publish, and fetch with every signature checked</td><td><span class="tag ok">works</span></td></tr>
-    <tr><td>Test a service</td><td><span class="tag no">waits on the OS</span> a service runs only on a Godspeed machine</td></tr>
-    <tr><td><code>godspeed run</code></td><td><span class="tag no">waits on the OS</span> no public way to run a service built outside the OS tree</td></tr>
-    <tr><td><code>godspeed install</code> on a Godspeed machine</td><td><span class="tag no">waits on the OS</span> the OS starts only the programs it was built with</td></tr>
+    <tr><td>A package that requires another (<code>[requires]</code>)</td><td><span class="tag ok">works</span> the machine installs and starts what it needs first</td></tr>
+    <tr><td><code>godspeed install</code> on a Godspeed machine</td><td><span class="tag ok">works</span> at its <code>gsh&gt;</code> prompt: the native package manager</td></tr>
+    <tr><td>Test a service, a utility, an app or a driver here</td><td><span class="tag no">waits on the OS</span> each runs only on a Godspeed machine</td></tr>
+    <tr><td><code>godspeed run</code></td><td><span class="tag no">waits on the OS</span> no public way yet to boot a machine with a program built outside the OS tree</td></tr>
   </table></div>
 
   <h2 id="languages">Can I use C, C++ or Go?</h2>

@@ -6,9 +6,9 @@
 
 use crate::arch::Arch;
 use crate::digest::Sha256Digest;
-use crate::manifest::{Artifact, Kind, Manifest, Problem, ProblemKind, FORMAT};
+use crate::manifest::{Artifact, Kind, Manifest, Problem, ProblemKind, Requirement, FORMAT, FORMAT_REQUIRES};
 use crate::name::PackageName;
-use crate::version::Version;
+use crate::version::{Version, VersionReq};
 use serde::Deserialize;
 use std::fmt::Write as _;
 use std::string::{String, ToString};
@@ -18,6 +18,7 @@ use std::vec::Vec;
 /// [`Manifest`], the type everything else in this crate works on.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OwnedManifest {
+    format: u32,
     name: String,
     version: Version,
     kind: Kind,
@@ -26,13 +27,14 @@ pub struct OwnedManifest {
     os_release: Version,
     contract: Sha256Digest,
     artifacts: Vec<Artifact>,
+    requires: Vec<Requirement>,
 }
 
 impl OwnedManifest {
     /// The manifest, borrowed.
     pub fn manifest(&self) -> Manifest<'_> {
         Manifest {
-            format: FORMAT,
+            format: self.format,
             name: PackageName::parse(&self.name).expect("validated when the manifest was read"),
             version: self.version,
             kind: self.kind,
@@ -41,6 +43,7 @@ impl OwnedManifest {
             os_release: self.os_release,
             contract: self.contract,
             artifacts: &self.artifacts,
+            requires: &self.requires,
         }
     }
 }
@@ -54,6 +57,15 @@ struct Raw {
     contract: Option<RawContract>,
     #[serde(default)]
     artifact: Vec<RawArtifact>,
+    #[serde(default)]
+    requires: Vec<RawRequire>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawRequire {
+    name: Option<String>,
+    version: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -155,12 +167,12 @@ pub fn parse(text: &str) -> Result<OwnedManifest, ParseError> {
                 kind: ProblemKind::Missing
             }]))
         }
-        Some(n) if n != FORMAT => {
+        Some(n) if n != FORMAT && n != FORMAT_REQUIRES => {
             return Err(ParseError::Invalid(std::vec![Problem {
                 field: "format",
                 kind: ProblemKind::UnknownFormat {
                     found: n,
-                    known: FORMAT
+                    known: FORMAT_REQUIRES
                 }
             }]))
         }
@@ -233,12 +245,34 @@ pub fn parse(text: &str) -> Result<OwnedManifest, ParseError> {
         }
     }
 
+    let mut requires = Vec::new();
+    for r in &raw.requires {
+        let name = c
+            .required("requires.name", &r.name)
+            .and_then(|n| match PackageName::parse(n) {
+                Ok(p) => Some(p),
+                Err(e) => {
+                    c.bad("requires.name", ProblemKind::Malformed(e.message()));
+                    None
+                }
+            });
+        let range = c.required("requires.version", &r.version).and_then(|v| {
+            v.parse::<VersionReq>()
+                .map_err(|e| c.bad("requires.version", ProblemKind::Malformed(e.message())))
+                .ok()
+        });
+        if let (Some(name), Some(range)) = (name, range) {
+            requires.push(Requirement::new(name, range));
+        }
+    }
+
     let (Some(name), Some(version), Some(kind), Some(os_release), Some(contract)) =
         (name, version, kind, os_release, contract)
     else {
         return Err(ParseError::Invalid(c.0));
     };
     let owned = OwnedManifest {
+        format: raw.format.unwrap_or(FORMAT),
         name,
         version,
         kind,
@@ -247,8 +281,16 @@ pub fn parse(text: &str) -> Result<OwnedManifest, ParseError> {
         os_release,
         contract,
         artifacts,
+        requires,
     };
-    owned.manifest().validate(|p| c.0.push(p));
+    // A requirement refused above leaves the format looking unmatched; that is the same fault said twice, so
+    // the format is not blamed for it.
+    let refused_requirement = raw.requires.len() != owned.requires.len();
+    owned.manifest().validate(|p| {
+        if !(refused_requirement && p.kind == ProblemKind::FormatForRequirements) {
+            c.0.push(p)
+        }
+    });
     if c.0.is_empty() {
         Ok(owned)
     } else {
@@ -282,6 +324,14 @@ pub fn to_toml(m: &Manifest<'_>) -> String {
             s,
             "\n[[artifact]]\narch = \"{}\"\nsize = {}\ndigest = \"{}\"",
             a.arch, a.size, a.digest
+        );
+    }
+    for r in m.requires {
+        let _ = writeln!(
+            s,
+            "\n[[requires]]\nname = {}\nversion = \"{}\"",
+            quoted(&r.name().to_string()),
+            r.range
         );
     }
     s
@@ -331,7 +381,7 @@ mod tests {
     fn an_unknown_format_stops_reading() {
         let a = artifacts();
         let text = to_toml(&manifest(&a))
-            .replace("format = 1", "format = 2")
+            .replace("format = 1", "format = 3")
             .replace("1.0.0", "one");
         let Err(ParseError::Invalid(ps)) = parse(&text) else {
             panic!()
@@ -341,11 +391,56 @@ mod tests {
             [Problem {
                 field: "format",
                 kind: ProblemKind::UnknownFormat {
-                    found: 2,
-                    known: FORMAT
+                    found: 3,
+                    known: FORMAT_REQUIRES
                 }
             }]
         );
+    }
+
+    #[test]
+    fn requirements_round_trip_as_format_2() {
+        let a = artifacts();
+        let r = [
+            Requirement::new(PackageName::parse("alice/store").unwrap(), "^1.2.0".parse().unwrap()),
+            Requirement::new(PackageName::parse("bob/driver").unwrap(), ">=0.3.0".parse().unwrap()),
+        ];
+        let mut m = manifest(&a);
+        m.format = FORMAT_REQUIRES;
+        m.requires = &r;
+        let text = to_toml(&m);
+        assert!(text.starts_with("format = 2\n"), "{text}");
+        assert!(
+            text.ends_with("\n[[requires]]\nname = \"bob/driver\"\nversion = \">=0.3.0\"\n"),
+            "{text}"
+        );
+        let back = parse(&text).unwrap();
+        assert_eq!(back.manifest(), m);
+        assert_eq!(to_toml(&back.manifest()), text, "one manifest, one text form");
+    }
+
+    #[test]
+    fn requirements_in_a_format_1_file_are_refused() {
+        let a = artifacts();
+        let text = std::format!(
+            "{}\n[[requires]]\nname = \"alice/store\"\nversion = \"^1.2.0\"\n",
+            to_toml(&manifest(&a))
+        );
+        let Err(ParseError::Invalid(ps)) = parse(&text) else {
+            panic!()
+        };
+        assert_eq!(
+            ps,
+            [Problem {
+                field: "format",
+                kind: ProblemKind::FormatForRequirements
+            }]
+        );
+        let bad = text.replace("format = 1", "format = 2").replace("^1.2.0", "1.2");
+        let Err(ParseError::Invalid(ps)) = parse(&bad) else {
+            panic!()
+        };
+        assert_eq!(ps.iter().map(|p| p.field).collect::<Vec<_>>(), ["requires.version"]);
     }
 
     #[test]

@@ -4,8 +4,9 @@ A Godspeed driver, created by `godspeed new driver {{name}}` against GodspeedOS 
 
 ## Files
 
-- `src/main.rs` - the driver. It starts at `{{entry}}`, takes its device's register window (`ctx.mmio()`), and
-  drives it. It is started at boot, like a service, and restarted if it dies.
+- `src/main.rs` - the driver. It starts at `{{entry}}`, takes its device's register window (`gs::driver::registers`),
+  and drives it, waiting on the device with `gs::driver::wait`. It is started at boot, like a service, and
+  restarted if it dies.
 - `contracts/{{name}}.toml` - what the driver **requests**: its device, by PCI class code and register BAR
   (`hw_pci_class`, `hw_pci_bar`), never an address. It grants nothing; the operator approves the device at
   `godspeed install`, and the OS finds which device that is.

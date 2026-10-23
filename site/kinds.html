@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What you can make - Godspeed CLI</title>
+<meta name="description" content="How to make each kind of GodspeedOS program with the godspeed CLI: a service, a utility, an app, a driver and a library.">
+<link rel="stylesheet" href="style.css">
+<script src="theme.js"></script>
+</head>
+<body>
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="./"><span class="mark">g</span>Godspeed CLI</a>
+    <nav class="main">
+      <a href="./">Overview</a>
+      <a href="kinds.html" aria-current="page">Make</a>
+      <a href="examples.html">Examples</a>
+      <a href="publishing.html">Publishing</a>
+      <a href="reference.html">Reference</a>
+      <a href="https://github.com/godspeedhq/godspeed-cli">GitHub</a>
+    </nav>
+    <button class="theme-toggle" type="button">Dark</button>
+  </div>
+</header>
+
+<main class="wrap">
+  <h1>What you can make</h1>
+  <p class="lede">GodspeedOS runs four kinds of program, and <code>godspeed new</code> makes every one, plus
+  libraries for them to share. Each kind is a different answer to one question: <strong>whose life does
+  the program live?</strong> Pick the kind, and the template is the smallest program of it that works.</p>
+
+  <div class="grid">
+    <a class="card" href="#service"><h3>Service</h3><p>The system's. Started at boot, restarted if it dies.</p></a>
+    <a class="card" href="#utility"><h3>Utility</h3><p>Its own. Runs when typed, ends with a status, pipes.</p></a>
+    <a class="card" href="#app"><h3>App</h3><p>The operator's. Has the screen and keyboard while it runs.</p></a>
+    <a class="card" href="#driver"><h3>Driver</h3><p>Its device's. Given one device, by what the bus says it is.</p></a>
+    <a class="card" href="#library"><h3>Library</h3><p>Nobody's. Built into what uses it, tested on your workstation.</p></a>
+  </div>
+
+  <h2 id="every">What every kind shares</h2>
+  <ol class="steps">
+    <li>
+      <h3>Make it, and check it</h3>
+<pre><span class="p">$ </span>godspeed new &lt;kind&gt; &lt;name&gt; --publisher &lt;you&gt;
+<span class="p">$ </span>cd &lt;name&gt;
+<span class="p">$ </span>godspeed check            <span class="c"># the project, its toolchain, and its contract against the OS's schema</span>
+<span class="p">$ </span>godspeed build --all      <span class="c"># one ELF for each of x86_64, aarch64, armv7, riscv64</span></pre>
+      <p>Every template is written on the public standard library, <code>gs</code>, and nothing below it. CI
+      makes, checks and builds every kind for all four architectures against the GodspeedOS release it names,
+      so a template that does not build is a bug in this CLI.</p>
+    </li>
+    <li>
+      <h3>Package and publish it</h3>
+<pre><span class="p">$ </span>godspeed package          <span class="c"># every file, with its size and SHA-256, before anything leaves</span>
+<span class="p">$ </span>godspeed publish          <span class="c"># signed, uploaded, installable as you/&lt;name&gt;</span></pre>
+      <p>No network on the machine? <code>godspeed package --local</code> writes one <code>.gsp</code> file, signed
+      with your key, that a machine installs once its operator trusts that key. <a href="publishing.html">Publishing</a>
+      has the one-time setup.</p>
+    </li>
+    <li>
+      <h3>Install it, on a Godspeed machine</h3>
+<pre><span class="p">gsh&gt; </span>godspeed install &lt;you&gt;/&lt;name&gt;</pre>
+      <p>Installing asks the operator for what the contract requests, by name, and grants nothing else. The
+      contract asks; the machine decides.</p>
+    </li>
+  </ol>
+
+  <section id="service">
+    <h2>Service <span class="tag ok">works</span></h2>
+    <p>A program the system keeps running: the supervisor starts it at every boot and restarts it if it dies.
+    The shape of every server, logger and background job.</p>
+<pre><span class="p">$ </span>godspeed new service clock</pre>
+<pre>#[no_mangle]
+pub extern "C" fn service_main(ctx: ServiceContext) -&gt; ! {
+    ctx.log("clock: started");
+    gs::ipc::park(&amp;ctx)
+}</pre>
+    <ul>
+      <li><strong>Given:</strong> what its contract requests and the operator approves - <code>log_write</code> in the
+      template, and send peers by name.</li>
+      <li><strong>Upgraded live:</strong> put <code>handover = true</code> under its contract's <code>[capabilities]</code>, and <code>godspeed upgrade</code> hands
+      the old version's state to the new one with no restart.</li>
+      <li><strong>Needs another package?</strong> Name it in <code>godspeed.toml</code>, and the machine installs and
+      starts it first:
+<pre>[requires]
+"alice/notes-store" = "^1.2.0"</pre>
+      A requirement grants nothing: the contract still names every peer it talks to.</li>
+    </ul>
+  </section>
+
+  <section id="utility">
+    <h2>Utility <span class="tag ok">works</span></h2>
+    <p>A program that does one job and ends, like a built-in command: typed at <code>gsh&gt;</code> by its name,
+    given its arguments, its output shown or piped, its status said.</p>
+<pre><span class="p">$ </span>godspeed new utility greet</pre>
+<pre>let mut buf = [0u8; gs::program::ARGS_MAX];
+let args = gs::program::args(&amp;ctx, &amp;mut buf);
+let mut out = gs::program::Output::new(&amp;ctx);
+let _ = writeln!(out, "hello, {}", if args.is_empty() { "world" } else { args });
+out.finish(0)</pre>
+<pre><span class="p">gsh&gt; </span>greet Ada
+<span class="o">hello, Ada</span>
+<span class="p">gsh&gt; </span>greet Ada | count
+<span class="o">1 line, 2 words, 11 bytes</span></pre>
+    <ul>
+      <li><strong>Given:</strong> its arguments and an output stream, through <code>gs::program</code>. It ends with
+      <code>finish(status)</code> or <code>gs::program::exit</code>, and is never restarted for it.</li>
+    </ul>
+  </section>
+
+  <section id="app">
+    <h2>App <span class="tag ok">works</span></h2>
+    <p>A program the operator uses: it has the screen and the keyboard while it runs, and gives them back
+    when it ends - even if it crashes.</p>
+<pre><span class="p">$ </span>godspeed new app notes</pre>
+<pre>let app = gs::app::App::open(&amp;ctx);
+app.println("This screen is notes' until a key is pressed.");
+let _key = app.wait_key();
+app.close(0)</pre>
+    <ul>
+      <li><strong>Given:</strong> the console, through <code>gs::app</code> - asked of the operator by name at
+      <code>godspeed install</code>, because a program that holds the keyboard reads what is typed.</li>
+      <li>An app cannot start a pipe: it has the screen, not a stream. Windows, and graphics beyond the console's
+      grid, are not offered.</li>
+    </ul>
+  </section>
+
+  <section id="driver">
+    <h2>Driver <span class="tag ok">works</span></h2>
+    <p>A program that drives one device. Its contract names the device by what the PCI bus says it is - never
+    an address - and the machine finds which device that is.</p>
+<pre><span class="p">$ </span>godspeed new driver sensor</pre>
+<pre>[capabilities]
+hw_pci_class = "00ff00"   # QEMU's teaching device, `edu`
+hw_pci_bar   = 0          # its registers are in BAR 0</pre>
+<pre>let Some(regs) = gs::driver::registers(&amp;ctx) else {
+    ctx.log("sensor: no device was granted - nothing to drive");
+    gs::ipc::park(&amp;ctx)
+};
+regs.write32(FACTORIAL, 5);
+// A bounded wait, by time: one that never ends is said, not waited on forever.
+if wait::until(&amp;ctx, Budget::ms(10), || regs.read32(STATUS) &amp; COMPUTING == 0).is_err() {
+    ctx.log("sensor: the device is not answering");
+    gs::ipc::park(&amp;ctx)
+}</pre>
+    <ul>
+      <li><strong>Given:</strong> its device's register window, and nothing else - no DMA arena and no interrupt
+      yet. It is the same library the OS's own drivers are written on, <code>gs::driver</code>:
+      <code>registers</code> for the window, <code>wait</code> for a bounded wait on the device, and
+      <code>delay</code> for a hold nothing can report the end of.</li>
+      <li>A class a GodspeedOS driver already handles is refused at install, so a package never takes a device
+      from the OS.</li>
+      <li>The template drives QEMU's <code>edu</code> (<code>-device edu</code>): installed, it logs
+      <code>device id 0x010000ed, alive true, 5! = 120</code>.</li>
+      <li><strong>Needs GodspeedOS v0.30.0 or later</strong>, the first release with <code>gs::driver::registers</code>.</li>
+    </ul>
+  </section>
+
+  <section id="library">
+    <h2>Library <span class="tag ok">works</span></h2>
+    <p>Reusable <code>no_std</code> Rust for the other kinds. Never installed: it is built into what uses it, so
+    it requires no packages. Its tests run on your workstation.</p>
+<pre><span class="p">$ </span>godspeed new library parser
+<span class="p">$ </span>godspeed test</pre>
+  </section>
+
+  <h2 id="choose">Which kind?</h2>
+  <div class="table-scroll"><table>
+    <tr><th>If it should</th><th>Make a</th></tr>
+    <tr><td>keep running, with or without anyone watching</td><td><a href="#service">service</a></td></tr>
+    <tr><td>do one job when typed, and end</td><td><a href="#utility">utility</a></td></tr>
+    <tr><td>take over the screen while someone uses it</td><td><a href="#app">app</a></td></tr>
+    <tr><td>talk to a piece of hardware</td><td><a href="#driver">driver</a></td></tr>
+    <tr><td>be code the others share</td><td><a href="#library">library</a></td></tr>
+  </table></div>
+</main>
+
+<footer class="site">
+  <div class="wrap">
+    Godspeed CLI is free software under the GPL-2.0.
+    <a href="https://github.com/godspeedhq/godspeed-cli">Source</a> ·
+    <a href="https://github.com/godspeedhq/godspeed-os">GodspeedOS</a> ·
+    <a href="https://github.com/godspeedhq/godspeed-registry">Registry</a>
+  </div>
+</footer>
+</body>
+</html>

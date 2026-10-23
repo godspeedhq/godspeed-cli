@@ -11,7 +11,7 @@ path = "src/main.rs"
 # The fixedbuf library from this repository, beside this project.
 fixedbuf = { path = "../fixedbuf" }
 # The Godspeed standard library, at the OS release this project was created against.
-godspeed = { git = "https://github.com/godspeedhq/godspeed-os", tag = "v0.29.0" }
+godspeed = { git = "https://github.com/godspeedhq/godspeed-os", tag = "v0.30.0" }
 
 # This project is its own workspace, wherever it is created.
 [workspace]

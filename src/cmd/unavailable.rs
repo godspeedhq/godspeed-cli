@@ -6,20 +6,17 @@
 
 use crate::diag::{Diagnostic, Kind, Stage};
 
-/// `run` and `test` for a service: blocked on the OS.
+/// `run` and `test` for a program: blocked on the OS.
 pub fn run_service(verb: &str) -> Diagnostic {
     Diagnostic::new(
         Kind::NotProvidedByOs,
         Stage::Setup,
-        format!("{verb} a service"),
-        "GodspeedOS runs only services compiled into its own image, and has no public way yet to add a service \
-         built outside its source tree. Doing it anyway would mean this CLI editing the OS's supervisor \
-         source, which it does not do.",
+        format!("{verb} a program"),
+        "A program built outside the GodspeedOS tree runs only as a package installed on a Godspeed machine, and          there is no public way yet for this CLI to boot one - in QEMU or on hardware - with your program on it.          Doing it anyway would mean this CLI building the OS image itself, which it does not do.",
     )
-    .expected("an OS build interface that takes a service crate from outside the tree")
+    .expected("an OS interface that boots a machine with a package already installed")
     .next(
-        "Build and check the service now with `godspeed build` and `godspeed check`. To run it today, \
-               add it to a GodspeedOS checkout by hand as GETTING_STARTED.md in the OS describes.",
+        "Build and check it now with `godspeed build` and `godspeed check`. To run it today, `godspeed package                --local` writes a `.gsp` file; on a Godspeed machine, trust your key and `godspeed install <file>.gsp`                at its `gsh>` prompt.",
     )
 }
 

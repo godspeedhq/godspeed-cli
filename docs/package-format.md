@@ -60,7 +60,7 @@ File names are fixed. The manifest never names a path, so it cannot point a read
 
 | field | rule |
 |---|---|
-| `format` | required; `1`. Any other value is refused before anything else is read (section 5). |
+| `format` | required; `1`, or `2` exactly when the manifest has requirements (below). Any other value is refused before anything else is read (section 5). |
 | `package.name` | required; `publisher/name`, each part a lowercase letter then lowercase letters, digits and `-`, at most 64 bytes - the OS contract schema's rule for a service name. |
 | `package.version` | required; `MAJOR.MINOR.PATCH`, decimal, no leading zeros, no suffix. Equal to the contract's `version`. |
 | `package.kind` | required; `service`, `utility`, `app` or `driver` (the last three added 2026-10-17, still format 1: a reader that does not know one refuses the manifest by naming the kind). A `library` is refused with the reason: libraries are depended on, not installed, and their distribution is not defined yet. A `driver`'s contract names its device by PCI class (`hw_pci_class`, `hw_pci_bar`). |
@@ -72,6 +72,22 @@ File names are fixed. The manifest never names a path, so it cannot point a read
 | `artifact.arch` | `x86_64`, `aarch64`, `armv7` or `riscv64`. |
 | `artifact.size` | the exact byte length; at least 1, at most 64 MiB. |
 | `artifact.digest` | SHA-256 of exactly those bytes, as `sha256:` and 64 lowercase hex digits. |
+| `requires` | optional, format 2 only, at most 8: the packages this one needs installed and running (GodspeedOS `docs/developer-services-design.md` 16). No duplicates, never the package itself. |
+| `requires.name` | `publisher/name` of a service or a driver. Never a built-in service (`fs`, `net-stack`): those come with the OS. |
+| `requires.version` | a range written with the whole version: `^1.2.0` (this major; for `0.x` this minor; for `0.0.z` exactly), `=1.2.3` or `>=1.2.0`. |
+
+A manifest with requirements carries them after its artifacts, one table each:
+
+    format = 2
+    ...
+    [[requires]]
+    name = "alice/notes-store"
+    version = "^1.2.0"
+
+They are format 2, and only they are, so a package without any stays format 1 and every reader of format 1 still
+installs it; a reader that predates requirements refuses one that has them as a format it does not read, which is
+the true reason. A contract peer that is a package (`publisher/name`) must be required; `godspeed check` refuses
+the package otherwise, and so does the machine.
 
 Reading is strict. An unknown key is an error, not ignored: a reader that skipped what it did not
 understand would install a package on the strength of half its manifest. Every problem is reported in one
@@ -100,8 +116,9 @@ manager's question, and is not answered here.
 - **Publisher identity.** A signature proves which KEY signed. Which publisher a key belongs to is not in
   the package at all: it is the registry's trust model (`docs/publishing-design.md` section 6), because a
   package that vouched for its own key would vouch for nothing.
-- **Dependencies.** A service has no runtime dependency mechanism on Godspeed, so format 1 has no
-  dependency field rather than an unenforceable one.
+- **Dependencies, until format 2.** Format 1 had no dependency field rather than an unenforceable one. Since
+  GodspeedOS can resolve and enforce them (`docs/developer-services-design.md` 16), format 2 carries
+  `[[requires]]` above; a requirement grants nothing, and the contract still holds every peer the operator approves.
 - **API compatibility.** `os.release` records what the package was built against. It is not a claim that
   the package works on any other release: GodspeedOS has no versioned public API or ABI yet to make that
   claim about. When it does, compatibility becomes a field and the format a new version.

@@ -110,6 +110,60 @@ pub fn run(platform: &Platform, project: &Project, registry_flag: Option<&str>, 
         .next("Change the publisher, or ask the registry maintainer to add your account to that namespace.")
         .into());
     }
+    // EVERY REQUIREMENT HAS A RELEASE IN RANGE HERE (GodspeedOS docs/developer-services-design.md 16.8): a package
+    // published needing what this registry cannot supply would install nowhere. Checked before a dry run returns, so
+    // the dry run says the same; an index that cannot be read stops the publish rather than letting it through unchecked.
+    for r in manifest.requires {
+        let rname = r.name().to_string();
+        let refuse = |reason: String| -> Diagnostic {
+            Diagnostic::new(Kind::InvalidProject, Stage::Validation, doing.clone(), reason).next(format!(
+                "Publish {rname} at a version in {} first, or change the range under [requires] in {}.",
+                r.range,
+                crate::project::MANIFEST
+            ))
+        };
+        match client.index(&rname) {
+            Answer::Done(None) => {
+                return Err(refuse(format!(
+                    "{name} requires {rname} {}, which this registry has never published.",
+                    r.range
+                ))
+                .into())
+            }
+            Answer::Done(Some(text)) => match pkg::parse_index(&text) {
+                Ok(owned) => {
+                    let releases = owned.releases();
+                    let index = owned.index(&releases);
+                    if !index.releases.iter().any(|rel| r.range.matches(&rel.version)) {
+                        let newest = index.releases.iter().map(|rel| rel.version).max();
+                        return Err(refuse(format!(
+                            "{name} requires {rname} {}, and no release of it is in that range{}.",
+                            r.range,
+                            newest.map(|v| format!(" (the newest is {v})")).unwrap_or_default()
+                        ))
+                        .into());
+                    }
+                }
+                Err(e) => {
+                    return Err(registry::unreachable(
+                        &doing,
+                        Stage::Validation,
+                        &format!("the index of {rname} could not be read: {e}"),
+                    )
+                    .into())
+                }
+            },
+            Answer::Refused(rf) => return Err(registry::refused(&doing, &url, &rf).into()),
+            Answer::Unknown(why) => {
+                return Err(registry::unreachable(
+                    &doing,
+                    Stage::Validation,
+                    &format!("the index of {rname} could not be read: {why}"),
+                )
+                .into())
+            }
+        }
+    }
     if dry_run {
         return would_publish(&client, &url, &doing, &name, version, &ours, &dir);
     }
