@@ -22,6 +22,12 @@ A Godspeed driver, created by `godspeed new driver {{name}}` against GodspeedOS 
   arena can read and write all of memory, which is why it is asked about on its own.
 - **A device a GodspeedOS driver already drives**: installing this one stops that driver for the device, and
   uninstalling it starts that driver again.
+- **A USB device**, instead of a PCI one: name it by `hw_usb = "vvvv:pppp"` in place of the `hw_pci_*` keys, and
+  reach it through its host with `gs::driver::bus::UsbDevice` (its identity, control transfers, bulk OUT, bulk
+  IN). It is started while the device is attached. The host binds a vendor-specific device (interface class
+  0xFF), one at a time; on the Raspberry Pi 2 it must be high-speed.
+
+The interrupt, the arena, a device taken over and a USB device need the GodspeedOS release after v0.30.0.
 
 ## Run
 

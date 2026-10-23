@@ -522,7 +522,6 @@ mod tests {
   <h2 id="not-yet">What you cannot build yet, and why</h2>
   <div class="table-scroll"><table>
     <tr><th>You want</th><th>What is missing in GodspeedOS</th></tr>
-    <tr><td>A driver that moves data by DMA, or takes an interrupt</td><td>A driver package is given its device's registers only. The OS's own drivers have DMA arenas and interrupts; a package does not, yet.</td></tr>
     <tr><td>An app with windows or graphics</td><td>An app has the console's grid of text, and nothing beyond it.</td></tr>
     <tr><td>A network client or server</td><td><code>gs::net</code> exists and an example would compile, but nothing yet grants an outside program access to the network stack.</td></tr>
     <tr><td>A program in C, C++ or Go</td><td>A non-Rust interface to the OS. <a href="./#languages">More</a>.</td></tr>

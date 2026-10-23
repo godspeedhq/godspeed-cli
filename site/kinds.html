@@ -128,32 +128,42 @@ app.close(0)</pre>
 
   <section id="driver">
     <h2>Driver <span class="tag ok">works</span></h2>
-    <p>A program that drives one device. Its contract names the device by what the PCI bus says it is - never
-    an address - and the machine finds which device that is.</p>
+    <p>A program that drives one device. Its contract names the device by what the bus says it is - a PCI class,
+    or a USB vendor and product - never an address, and the machine finds which device that is.</p>
 <pre><span class="p">$ </span>godspeed new driver sensor</pre>
 <pre>[capabilities]
 hw_pci_class = "00ff00"   # QEMU's teaching device, `edu`
-hw_pci_bar   = 0          # its registers are in BAR 0</pre>
-<pre>let Some(regs) = gs::driver::registers(&amp;ctx) else {
-    ctx.log("sensor: no device was granted - nothing to drive");
-    gs::ipc::park(&amp;ctx)
-};
+hw_pci_bar   = 0          # its registers are in BAR 0
+hw_pci_irq   = true       # its interrupt: the OS picks the vector
+hw_dma       = "8KiB"     # a DMA arena, memory the device reads and writes itself</pre>
+<pre>// Shortened: the template says which grant is missing where this writes `?`.
+let regs = gs::driver::registers(&amp;ctx)?;     // the register window
+let irq = Irq::granted(&amp;ctx);                 // the interrupt
+let mut layout = gs::driver::arena(&amp;ctx)?.layout();
+let out = layout.take("out", 64, 64)?;        // a named part of the DMA arena
+
+regs.write32(STATUS, RAISE_ON_FACTORIAL);
 regs.write32(FACTORIAL, 5);
-// A bounded wait, by time: one that never ends is said, not waited on forever.
-if wait::until(&amp;ctx, Budget::ms(10), || regs.read32(STATUS) &amp; COMPUTING == 0).is_err() {
-    ctx.log("sensor: the device is not answering");
-    gs::ipc::park(&amp;ctx)
+match irq.wait(&amp;ctx, Budget::ms(1000)) {      // bounded by time, never by a count
+    Woke::Interrupt =&gt; { /* clear it, then */ irq.rearm(&amp;ctx) }
+    _ =&gt; ctx.log("sensor: the device did not answer"),
 }</pre>
     <ul>
-      <li><strong>Given:</strong> its device's register window, and nothing else - no DMA arena and no interrupt
-      yet. It is the same library the OS's own drivers are written on, <code>gs::driver</code>:
-      <code>registers</code> for the window, <code>wait</code> for a bounded wait on the device, and
-      <code>delay</code> for a hold nothing can report the end of.</li>
-      <li>A class a GodspeedOS driver already handles is refused at install, so a package never takes a device
-      from the OS.</li>
-      <li>The template drives QEMU's <code>edu</code> (<code>-device edu</code>): installed, it logs
-      <code>device id 0x010000ed, alive true, 5! = 120</code>.</li>
-      <li><strong>Needs GodspeedOS v0.30.0 or later</strong>, the first release with <code>gs::driver::registers</code>.</li>
+      <li><strong>Given</strong>, all through <code>gs::driver</code>, the library every driver in GodspeedOS is
+      written on: its device's register window (<code>registers</code>), its interrupt when the contract asks
+      (<code>irq</code>), and a DMA arena when the contract asks and the operator agrees (<code>arena</code>, at most
+      2 MiB). Where no IOMMU confines the device - no Raspberry Pi or VisionFive has one - a driver with an arena
+      can reach all of memory, so the install asks about it by a question of its own.</li>
+      <li><strong>A device GodspeedOS already drives</strong> is taken over: installing the package stops the OS's
+      driver for that device, and uninstalling it starts that driver again.</li>
+      <li><strong>A USB device</strong> has no registers of its own, so its driver names it by
+      <code>hw_usb = "0403:6001"</code> and reaches it through its host with <code>gs::driver::bus</code>: its
+      identity, control transfers, bulk OUT and bulk IN. It is started while the device is attached. The host binds
+      a vendor-specific device (interface class 0xFF), one at a time; on the Raspberry Pi 2 it must be high-speed.</li>
+      <li>The template drives QEMU's <code>edu</code> (<code>-device edu</code>) by all three grants: installed, it
+      logs <code>device id 0x010000ed, alive true, 5! = 120 by interrupt, 64 bytes through DMA and back intact</code>.</li>
+      <li><strong>The interrupt, the arena, a device taken over and a USB device need the GodspeedOS release after
+      v0.30.0.</strong> On v0.30.0 a driver package is given its registers only.</li>
     </ul>
   </section>
 
