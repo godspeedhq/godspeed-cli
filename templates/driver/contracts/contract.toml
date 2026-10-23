@@ -13,6 +13,11 @@ limit   = "16MiB"
 log_write = true      # write lines to the kernel log
 # The device, by what the PCI bus says it is: class, subclass and programming interface, six hex digits.
 # This one is QEMU's teaching device `edu` (`-device edu`), class 00:ff:00, which no driver in GodspeedOS
-# claims. A class an in-tree driver handles is refused at install.
+# claims. Naming a class a GodspeedOS driver does handle is allowed: installing this one stops that driver for
+# the device, and uninstalling it starts that driver again.
 hw_pci_class = "00ff00"
 hw_pci_bar   = 0      # its registers are in BAR 0
+hw_pci_irq   = true   # its interrupt: the OS picks the vector and programs the device; you never name one
+# A DMA arena: memory the device reads and writes by itself, as a size (at most 2MiB). The operator is asked
+# about it on its own, because where no IOMMU confines the device its driver can reach all of memory.
+hw_dma       = "8KiB"
