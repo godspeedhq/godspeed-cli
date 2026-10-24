@@ -4,7 +4,7 @@
 
 Build and maintain the Godspeed CLI (`godspeed`).
 
-The CLI is the primary developer-facing tool for creating, building, testing, running, packaging, installing, updating, inspecting, and eventually publishing Godspeed applications.
+The CLI is the primary developer-facing tool for creating, checking, building, testing, packaging, signing, publishing, fetching and inspecting Godspeed software. Installing, upgrading and uninstalling it are done on a Godspeed machine, by the native package manager. Running a program from the workstation (`godspeed run`) waits on the OS, and the CLI says so.
 
 The CLI must make the correct path the easiest path.
 
@@ -85,18 +85,18 @@ The CLI owns developer workflow on the developer's workstation.
 Examples:
 
     godspeed new service hello
+    godspeed check
     godspeed build
     godspeed test
-    godspeed run --target qemu
-    godspeed check
     godspeed package
     godspeed publish
 
-The CLI is responsible for composing these operations.
+The CLI is responsible for composing these operations. (`godspeed run` belongs here too, and is refused until
+the OS can boot a machine with a package on it; see "What GodspeedOS Does Not Provide Yet".)
 
 It is not responsible for redefining what the underlying system means.
 
-Installing, updating and removing software ON a Godspeed machine belongs to the native package manager, a
+Installing, upgrading and uninstalling software ON a Godspeed machine belongs to the native package manager, a
 separate program that shares the `godspeed` command vocabulary (see "Host CLI and Native Package Manager"
 below). The two must never be confused: one builds and publishes, the other verifies and installs.
 
@@ -151,6 +151,9 @@ Godspeed applications may contain separate binaries for separate ISAs while rema
 
 Run project tests using the supported Godspeed testing mechanisms.
 
+Today that is a `library`'s tests, run on the workstation. A service, a utility, an app or a driver runs only on
+a Godspeed machine, so `godspeed test` refuses one and says why (exit 20), as `run` does.
+
 The CLI should distinguish:
 
 - compilation failure
@@ -175,6 +178,10 @@ Examples:
     godspeed run --target qemu
     godspeed run --target hardware
 
+**Not available yet.** Both targets are refused with the reason (exit 20): there is no public way for this CLI
+to boot a machine, in QEMU or on hardware, with the program on it. Meanwhile `godspeed package --local` writes a
+`.gsp` file, which a Godspeed machine installs at its `gsh>` prompt.
+
 Target selection belongs to the CLI.
 
 Application code must not need to know whether it is running on QEMU, x86_64 hardware, ARM hardware, or RISC-V hardware unless that distinction is explicitly part of a public application contract.
@@ -189,30 +196,36 @@ The initial system must not require a web frontend.
 
 The CLI is the primary interface.
 
-Required operations, by where they run:
+The operations, by where they run:
 
     host CLI (the developer's workstation):
         godspeed publish
-        godspeed login
-        godspeed logout
-        godspeed whoami
+        godspeed login | logout | whoami
+        godspeed token new
+        godspeed fetch <package>
+        godspeed inspect <package> | <file>.gsp
 
-    native package manager (a Godspeed machine):
+    native package manager (a Godspeed machine, GodspeedOS 0.29.0 and later):
         godspeed search <query>
         godspeed info <package>
-        godspeed install <package>
-        godspeed list
-        godspeed update <package>
-        godspeed uninstall <package>
+        godspeed fetch <package>
+        godspeed install <package>             (a fetched package, or a <file>.gsp)
+        godspeed list available | fetched | installed | updates | versions <package>
+        godspeed upgrade <package> | all
+        godspeed uninstall <package> [purge]
+        godspeed remove <package>              (delete a fetched copy)
+        godspeed cleanup
+        godspeed registry | trust | config | check
+        godspeed verify | inspect
+        godspeed plan | resolve                (0.30.0 and later: a package's requirements)
 
-Potential future operations:
+Installing is two steps: `fetch` downloads a release and checks it through the registry's chain of trust, and
+`install` starts only a package already fetched. `upgrade` fetches the newest release itself.
 
-    godspeed registry
-    godspeed delete cache <package>
-    godspeed delete data <package>
-
-`uninstall`, not `remove`: one word for one act, and `delete` keeps its Godspeed meaning of destroying data
-(the shell's `delete`), which uninstalling does not do by default.
+`uninstall` stops a package and keeps its fetched copy, so a reinstall needs no network; `purge` deletes the
+fetched copies too. `remove` deletes a fetched copy that is not installed. None of them deletes the package's
+data: there is no command for that yet, and `delete` keeps its Godspeed meaning of destroying data (the shell's
+`delete`).
 
 Do not implement marketplace concepts such as:
 
@@ -358,7 +371,8 @@ A maintainer may publish a release without necessarily being the original packag
 
 Do not make identity dependent on a web frontend.
 
-The CLI should eventually support authentication directly.
+The CLI supports authentication directly: `godspeed login` makes a publisher token and prints its fingerprint for
+the registry maintainer to approve, `godspeed token new` makes one for CI, and `logout` revokes it.
 
 ---
 
@@ -414,22 +428,22 @@ over:
 
 ---
 
-## Update Semantics
+## Upgrade Semantics
 
-    godspeed update
+    godspeed upgrade <package> | all
 
-must not blindly replace working software.
+runs on a Godspeed machine (the native package manager; the machine has no `update`, and this CLI answers
+both words with exit 22), and must not blindly replace working software. It:
 
-The CLI should:
+1. looks up the newest release on the registry the package came from
+2. fetches and verifies it through the chain of trust
+3. checks that every installed package that requires it still accepts the new version
+4. asks the operator again, naming the version change, because a new release may ask for more
+5. installs it in the old one's place
+6. preserves meaningful failure information
 
-1. resolve available versions
-2. check compatibility
-3. verify artifacts
-4. determine required changes
-5. install the new version
-6. preserve meaningful failure information
-
-If an update operation reaches an uncertain state, do not pretend it succeeded.
+If an upgrade reaches an uncertain state, do not pretend it succeeded. (`godspeed self update` is a different
+thing: it replaces this CLI's own binary.)
 
 Godspeed's broader rule applies:
 
@@ -576,13 +590,9 @@ The CLI should make ordinary work boring.
 
 A developer should be able to go from:
 
-    godspeed new hello
+    godspeed new service hello
 
-to:
-
-    godspeed run
-
-without understanding:
+to the program running, without understanding:
 
 - MISCIS
 - kernel IPC
@@ -590,6 +600,10 @@ without understanding:
 - supervisor internals
 - device registers
 - ISA boot mechanisms
+
+Today "running" means `godspeed publish` and then `godspeed fetch` and `godspeed install` on a Godspeed
+machine, or `godspeed package --local` and `godspeed install <file>.gsp` there; `godspeed run` from the
+workstation waits on the OS.
 
 The developer should learn those things because they are interested in them, not because ordinary application development requires them.
 
@@ -747,7 +761,7 @@ Minimum categories:
 - architecture selection
 - dependency resolution
 - installation
-- update
+- upgrade
 - corrupted artifact
 - checksum mismatch
 - signature mismatch
@@ -775,23 +789,40 @@ Minimum categories:
 - retry behaviour
 - cache behaviour
 
+### Where each is tested today
+
+Not all of these are this repository's to test, because not all of them are this CLI's to do:
+
+- **Here** (`tests/cli.rs`): creating every kind, `check`, refusing an unknown architecture, building every kind
+  for every architecture (ignored by default: it needs an OS checkout, the toolchain and the network), a library's
+  tests, packaging, signing and verifying, a corrupted or malformed package, `login` and `token`, an unauthenticated
+  `publish`, an unreachable registry, `fetch` and `inspect` refusals, `self update`, and the machine's verbs
+  answered with exit 22.
+- **In the registry** (`godspeed-registry`, `scripts/local-test.sh` and `scripts/cli-test.sh`, with the real CLI):
+  publishing, an unlisted, retired or revoked key, a version that exists, a namespace that is not the publisher's,
+  and `fetch` through the trust chain.
+- **On the machine** (GodspeedOS, `osdev test godspeed`, `deps`, `kinds` and `driver-packages`): search, info,
+  fetch, install, upgrade, uninstall and requirements, and every kind made from these templates, untouched,
+  installed and seen to do its job. A generated program can be run only there.
+
 ### Stranger Test
 
 A weak AI or unfamiliar developer should be able to:
 
     godspeed new service hello
+    godspeed check
     godspeed build
-    godspeed test
-    godspeed run --target qemu
     godspeed publish
 
 and someone else, on a Godspeed machine:
 
+    godspeed fetch alice/hello
     godspeed install alice/hello
 
 using public documentation without needing Godspeed kernel knowledge. The subject should build something real
-(a service or a utility that does a job), not a package holding a static example. Until the OS can install an
-image it did not ship with, the test stops at `godspeed run` (see "What GodspeedOS Does Not Provide Yet").
+(a service or a utility that does a job), not a package holding a static example. `godspeed test` and
+`godspeed run` join the sequence when the OS can boot a machine with a package on it (see "What GodspeedOS Does
+Not Provide Yet"); until then a program's only test is on a machine.
 
 The test subject is allowed to fail.
 
@@ -831,12 +862,16 @@ documented public interfaces alone:
     godspeed run --target qemu
     godspeed publish
 
-and another user can then install it:
+and another user can then install it, at a Godspeed machine's `gsh>` prompt:
 
+    godspeed fetch alice/hello
     godspeed install alice/hello
 
 No step may require knowledge of kernel internals, raw IPC, capability-table layout or private supervisor
 protocols.
+
+Where it stands: every step works except `godspeed test` for a program and `godspeed run`, which wait on the OS
+and say so (exit 20). A library's `godspeed test` works.
 
 ## Project Types
 
@@ -848,11 +883,11 @@ protocols.
 
 | Kind | What it is | Can the OS run it today? |
 |---|---|---|
-| `service` | A managed component with a lifecycle and declared authority requirements | **Yes.** Kept running by the supervisor; `godspeed install` starts it at every boot |
+| `service` | A managed component with a lifecycle and declared authority requirements | **Yes, from GodspeedOS 0.29.0.** Kept running by the supervisor; once installed it is started at every boot |
 | `library` | Reusable code for other Godspeed projects; not executable or installable on its own | **Yes**, as a Rust crate. How it is distributed and depended on is defined separately from executable packages |
 | `utility` | A program that performs one operation and ends | **Yes, from GodspeedOS 0.29.0** (and a checkout ahead of 0.28.0). The OS's `Exit` syscall (its CLAUDE.md 14.5 amendment, 2026-10-17) and `gs::program`: the shell runs an installed utility by its name, hands it its arguments, shows or pipes its output and says its status. A release before that cannot build one: the template uses `gs::program` |
 | `app` | A user-facing program with the screen and the keyboard while it runs | **Yes, from GodspeedOS 0.29.0** (and a checkout ahead of 0.28.0): a utility that holds the console foreground, through `gs::app`. The operator approves the console at install. Not windows, not a graphics surface beyond the console's grid: those are later, if ever |
-| `driver` | A userspace driver for one device, named in its contract by PCI class code and register BAR | **Yes, from GodspeedOS 0.29.0** (and a checkout ahead of 0.28.0), REGISTERS ONLY: the operator approves the device at install, the OS finds which device of that class it is, and the driver is given that device's register window - no DMA arena and no interrupt yet, and never a class a GodspeedOS driver already handles. Its template is written on `gs::driver` (`registers` and `wait`, 2026-10-22), so it builds against **GodspeedOS 0.30.0** or later, the first release with `gs::driver::registers` |
+| `driver` | A userspace driver for one device, named in its contract by PCI class code and register BAR, or (after 0.30.0) a USB device by vendor and product | **Yes, from GodspeedOS 0.29.0**, REGISTERS ONLY there and in 0.30.0: the operator approves the device at install, the OS finds which device of that class it is, and the driver is given that device's register window - no DMA arena and no interrupt, and never a class a GodspeedOS driver already handles. **The release after 0.30.0** adds its interrupt (`hw_pci_irq`), a DMA arena (`hw_dma`), taking over a device a GodspeedOS driver handles, and USB (`hw_usb`, through its host). The template uses its interrupt and DMA, so it builds against that release; against 0.30.0, `godspeed check` refuses its contract |
 
 These are developer-facing roles. They create no new kernel task class and no privileged identity.
 
@@ -869,63 +904,85 @@ Every generated project:
 - is written on the public standard library (`gs`) and nothing below it, which the OS already enforces for its own
   services (`scripts/one_way_check.py` holds a new crate at zero raw SDK calls);
 - carries a valid package manifest that declares the capabilities it requests;
-- contains a minimal working example and a test that runs;
+- contains a minimal working example; a library's also has a test that runs here, and a program's is run on a
+  Godspeed machine, because nothing can run one off a machine yet;
 - says how to build and run it;
 - uses no undocumented API, no unnecessary dependency, and no ISA-specific logic unless the project truly needs it.
 
-Every template is built and run in CI. Templates are executable documentation: one that fails to build or run
-under its documented environment is a defect in the CLI.
+Every template is made, checked and built for every architecture in CI, against the OS release CI pins
+(`os_ref` in `.github/workflows/ci.yml`), and a library's tests run there. They are run in the OS repository:
+`osdev test kinds` installs one of each kind, made from the templates untouched, and sees each do its job.
+Templates are executable documentation: one that fails to build or run under its documented environment is a
+defect in the CLI.
 
 ## Command Surface (host)
 
     godspeed new <kind> <name>
+    godspeed check
     godspeed build [--arch <isa> | --all]
     godspeed test
-    godspeed run [--target qemu|hardware]
-    godspeed check
-    godspeed package
-    godspeed publish
+    godspeed run [--target qemu|hardware]        (refused: waits on the OS)
+    godspeed package [--local]
+    godspeed sign | verify
+    godspeed key generate | show
+    godspeed publish [--dry-run]
     godspeed login | logout | whoami
+    godspeed token new
+    godspeed fetch | inspect
     godspeed doctor
+    godspeed completions <shell>
+    godspeed self update | uninstall
+
+`site/reference.html` has every flag; `godspeed <command> --help` is the same list from the parser itself.
 
 - `check` validates the project, its manifest, its targets and its declared compatibility, without publishing.
 - `package` builds and validates the distributable artifacts locally, so they can be inspected before anything
-  leaves the machine.
+  leaves the machine. `--local` also signs them into one `.gsp` file, for a machine that trusts the key.
 - `publish` is the authenticated publication workflow.
-- `doctor` checks the developer's environment: toolchains, targets, QEMU, credentials. It is where an error's
-  "Next:" line can send someone.
+- `fetch` and `inspect` check a published release, or a `.gsp` file, as a machine will before installing it.
+- `doctor` checks the developer's environment: this CLI's version against the latest release, the OS release or
+  checkout, the toolchain, every target, and QEMU. It is where an error's "Next:" line can send someone.
 
 Every command works non-interactively for CI, with the same validation and security. No command asks for
 something the manifest already says.
 
 ## Package Manifest
 
-A versioned, machine-readable TOML manifest. Illustrative only, not a claim that these fields or capability
-names exist:
+A versioned, machine-readable TOML manifest, `manifest.toml`, defined in `docs/package-format.md` (format 1,
+and format 2 for a package with `[[requires]]`). `godspeed package` writes it; a developer writes
+`godspeed.toml` (the kind, the contract's path, the publisher) and the OS contract, and never the manifest:
+
+    format = 1
 
     [package]
-    name = "hello"
+    name = "alice/hello"
     version = "1.0.0"
     kind = "service"
-    description = "Example Godspeed service"
+    description = "Says hello"
     license = "MIT"
 
-    [compatibility]
-    api = "1"
+    [os]
+    release = "0.30.0"
 
-    [capabilities]
-    request = ["log_write"]
+    [contract]
+    digest = "sha256:..."
+
+    [[artifact]]
+    arch = "x86_64"
+    size = 18952
+    digest = "sha256:..."
 
 - It describes identity, compatibility, components, dependencies and **requested** authority. It grants nothing.
 - **It must be derived from the OS's existing service contract, not invented beside it.** Godspeed already has a
   contract format (`contracts/<name>.toml`, validated against `contracts/schema/service.schema.json`), and the OS
   is explicit that a contract is a build-time declaration and the spawn request is what grants (the OS's CLAUDE.md
   13.6). A second, competing declaration of a service's authority is the drift that section was written to stop.
-  The package manifest should carry or reference the service contract, and use its capability names.
+  So it does: the package carries the contract itself (`contract.toml`) and the manifest binds it by digest,
+  with the contract's own capability names.
 - Cargo's manifest and the Godspeed manifest serve different purposes. Do not merge them silently.
-- The format has an explicit version and a written compatibility policy.
-- `api = "1"` presumes a versioned Godspeed API that does not exist yet. The OS defines that version; the CLI
-  only reads it.
+- The format has an explicit version and a written compatibility policy (`docs/package-format.md` 5).
+- Compatibility is an OS release (`[os] release`), because there is no versioned Godspeed API yet. The OS
+  defines that version when it exists; the CLI only reads it.
 
 ## Package Identity
 
@@ -938,23 +995,26 @@ names exist:
 
 ## Publishing Experience
 
-Illustrative output:
+What it prints (once `godspeed login` has been done and the maintainer has approved the token and listed the
+signing key; with no token, `publish` stops before building anything and says to log in):
 
     $ godspeed publish
-    Validating project...
-    Building supported targets...
-    Creating package artifacts...
-    Verifying package metadata...
-    Publisher authentication required.
-    Continue with sign-in? [Y/n]
-    Authenticating...
-    Checking namespace ownership...
-    Signing package...
-    Uploading artifacts...
+    Creating package...
+    Verifying package...
+    Signing with ed25519:b79a6e80...
+    Authenticating with https://godspeed-registry.bankole-422.workers.dev...
+    Reserving alice/hello@1.0.0...
+    Reserved until 2026-10-16T10:51:53Z.
+    Uploading contract.toml (439 bytes)...
+    Uploading manifest.sig (243 bytes)...
+    Uploading x86_64.elf (18952 bytes)...
+    ...
     Finalising publication...
-    Published alice/hello@1.0.0
-    Install:
+    Published alice/hello@1.0.0 (2026-10-16T10:36:55Z)
+    Install, on a Godspeed machine:
+      godspeed fetch alice/hello
       godspeed install alice/hello
+    Verify it from the registry, as a client would: godspeed fetch alice/hello@1.0.0
 
 A step is reported as done only when its outcome has been established. The developer never has to create a
 Cloudflare account, hold storage credentials, upload binaries by hand, edit a central index, know object keys,
@@ -973,18 +1033,18 @@ compute checksums, or run a server. The CLI does the routine work.
 
 ## Registry Backend: Cloudflare R2
 
-R2 is the first object store behind the official registry. It holds immutable artifacts and their metadata.
-Illustrative layout (exact naming is an implementation detail):
+R2 is the first object store behind the official registry (a Cloudflare Worker,
+`https://godspeed-registry.bankole-422.workers.dev`). It holds immutable artifacts and their metadata, served
+at these paths:
 
-    packages/
-      alice/
-        hello/
-          1.0.0/
-            manifest.toml
-            armv7.gsp
-            aarch64.gsp
-            riscv64.gsp
-            x86_64.gsp
+    trust/root/<n>.toml, .sig          the root of trust (this CLI has root 1's digest built in)
+    trust/{namespaces,snapshot,timestamp}.toml, .sig
+    index/<publisher>/<name>.toml      every release of a package, each with its manifest's digest
+    packages/<publisher>/<name>/<version>/
+        manifest.toml
+        manifest.sig
+        contract.toml
+        x86_64.elf  aarch64.elf  armv7.elf  riscv64.elf
 
 - The CLI talks to the **registry protocol**, never to R2's API (see "External Services" above). The public
   download path is a static one and does not depend on R2-specific interfaces.
@@ -1009,8 +1069,11 @@ and index updates.
 
 - Every artifact is bound to its package, version, target and digest, and is verified before installation.
 - The registry has a defined trust model for its index and metadata. **Signatures on artifacts are not enough if
-  an attacker can replace the index or swap a publisher's key unnoticed.** The Update Framework (TUF) is the
-  reference design for exactly this problem; read it before inventing one.
+  an attacker can replace the index or swap a publisher's key unnoticed.** It follows The Update Framework (TUF):
+  a root and a namespaces document (each publisher's keys) signed by offline keys, and a snapshot and a
+  one-day timestamp signed by the registry, re-signed when anything changes or the timestamp nears expiry,
+  which it checks every six hours (`docs/trust-metadata.md`). `fetch`,
+  `inspect` and the machine check the whole chain before keeping anything.
 - Five properties are kept separate: content integrity, publisher identity, registry authorisation, local
   capability grants, and software safety.
 
@@ -1021,17 +1084,19 @@ The registry distributes software. The operating system decides what it may do.
 The two share the `godspeed` vocabulary and are separate executables.
 
 - **The host CLI** creates, builds, tests, packages and publishes, on the developer's workstation.
-- **The native package manager** searches, inspects, downloads, verifies, installs, updates and uninstalls, on a
-  Godspeed machine. It is an ordinary Godspeed program on public interfaces: no privileged kernel knowledge, no
-  private supervisor protocol.
+- **The native package manager** (`godspeed-pm` in the OS, from GodspeedOS 0.29.0) searches, inspects,
+  fetches, verifies, installs, upgrades and uninstalls, on a Godspeed machine. It is an ordinary Godspeed program
+  on public interfaces: no privilege, no kernel knowledge; it asks the supervisor to start and stop a package over
+  the supervisor's published commands (`supcmd::INSTALL`, `UNINSTALL`, `INSTALLED`).
 
 On the native side:
 
 - a package's kind comes from its verified metadata; a user does not need to know it to install it;
-- uninstalling keeps the package's user and service data by default (on Godspeed, its folders under `/system/`
-  and `/users/`), and `delete data` says exactly what it will destroy before it does;
-- **installing or updating never grants a requested capability by itself.** Something the operator controls
-  decides, and the decision is visible.
+- uninstalling deletes none of the package's data (its folders under `/system/` and `/users/`), and keeps its
+  fetched copy unless `purge` is given; there is no command that deletes a package's data yet;
+- **installing or upgrading never grants a requested capability by itself.** The operator is asked, at the
+  prompt, for each peer the contract requests, and for a device, the console or (after 0.30.0) a DMA arena; nothing
+  else is granted, and the answer is recorded with the package.
 
 ## What GodspeedOS Does Not Provide Yet
 
@@ -1040,16 +1105,23 @@ and each blocks a named part of this contract:
 
 | Missing in the OS | What it blocks here | Where the OS tracks it |
 |---|---|---|
-| Starting an image the OS did not ship with: the supervisor runs only images compiled into it | `godspeed install` on a running machine; `godspeed run` without rebuilding the OS image | `docs/service-ownership.md`, step 2 (images from `fs` as signed packages): design, not built |
-| A signature check on service images at spawn | Any trust in an installed package beyond "the registry said so" | the same step 2 |
-| A local grant policy: who decides what an installed package's requested capabilities become | "Installation respects local capability policy" | not designed |
-| A terminating task (`fn main()`, or an exit call) | `utility` and `app` templates | `docs/stdlib-design.md` 1 (options A and B) |
-| Device grants for a driver outside the OS tree | the `driver` template | the supervisor's spawn rows, by device kind |
-| A versioned public API/ABI | `[compatibility] api` | the OS's v1 work |
+| A public way to boot a machine, in QEMU or on hardware, with a package already installed | `godspeed run`, and `godspeed test` for a program | not designed |
+| A program's interrupt, DMA arena, device takeover and USB, for a driver package | the `driver` template against 0.30.0 (it builds against the release after) | built on the OS's `feat/driver-packages`, in no release yet |
+| A versioned public API/ABI | compatibility beyond "built against this OS release" | the OS's v1 work |
+| A command that deletes an uninstalled package's data | "`delete data` says exactly what it will destroy" | not designed |
 
-**Until then, `godspeed run --target qemu` works by building a Godspeed image with the project embedded**, the
-way every OS service is built today. That is a development convenience, and the CLI says that is what it is
-doing: it is not installation, and it must not be presented as installation.
+`godspeed run` is refused with the reason (exit 20), and so is `godspeed test` for a program. The CLI does not
+build an OS image with the project inside: that would make the CLI responsible for the OS image, which it is not.
+
+What this table listed before, and the OS has since built:
+
+| Built | In |
+|---|---|
+| Starting an image the OS did not ship with, read from the disk as a signed package, checked again at every boot and restart | GodspeedOS 0.29.0 (its CLAUDE.md 14.1, amendment 2026-10-17) |
+| The operator deciding what an installed package's requested capabilities become, asked at install | 0.29.0 |
+| A terminating program (`Exit`, `gs::program`), so `utility` and `app` | 0.29.0 (its CLAUDE.md 14.5) |
+| A device for a driver outside the OS tree, by PCI class, registers only | 0.29.0; `gs::driver::registers` in 0.30.0 |
+| Packages that require other packages | 0.30.0 |
 
 ## Failure and Recovery
 
@@ -1064,22 +1136,26 @@ mismatches; incompatible targets; partial transfers; concurrent publishes; and o
 
 ## Diagnostics
 
-Every refusal says what happened, why, and what to do next:
+Every refusal says what happened, in which stage, why, and what to do next, and exits with a code a script can
+act on (`src/diag.rs`, and `site/reference.html`'s table):
 
-    Cannot publish alice/hello@1.0.0
+    Cannot publish alice/hello@0.1.0
+    Stage: upload
     Reason:
-      Version 1.0.0 already exists.
+      alice/hello@0.1.0 was already published on 2026-10-16T10:36:55Z with a different manifest.
+      Published versions never change.
     Next:
-      Increment the package version and retry.
+      Increment the version (in the contract and Cargo.toml) and publish again.
 
-    Cannot build for riscv64
+    Cannot build for mips
+    Stage: validation
     Reason:
-      The Godspeed riscv64 target toolchain is not installed.
-    Next:
-      Run `godspeed doctor` for setup guidance.
+      "mips" is not an architecture Godspeed runs on.
+    Expected:
+      x86_64, aarch64, armv7, riscv64
 
-and names the stage it failed in: validation, compilation, testing, packaging, authentication, upload or
-finalisation. Internal detail is shown only when it helps the developer act.
+The stages are setup, validation, dependencies, compilation, testing, packaging, verification, authentication,
+upload and finalisation. Internal detail is shown only when it helps the developer act.
 
 ## Acceptance Criteria
 
@@ -1097,7 +1173,8 @@ The CLI is not done because its commands exist. At minimum:
 10. An interrupted publication never exposes an incomplete release.
 11. Published packages can be discovered and downloaded.
 12. Downloads are verified before installation.
-13. Installation respects local capability policy (blocked on the OS, above).
+13. Installation respects local capability policy: the operator approves what the contract requests (the OS,
+    from 0.29.0).
 14. Uninstalling does not silently destroy retained data.
 15. A new contributor completes the documented workflow without the maintainer's help (the Stranger Test above).
 
@@ -1110,7 +1187,8 @@ The first milestone is the smallest complete workflow:
 
     create -> build -> test -> package -> publish -> discover -> install -> run
 
-and its first half (create to publish, plus run in QEMU) can be built now; its second half waits on the OS.
+All of it works today except `test` for a program and `run` from the workstation, which wait on the OS: a
+program is run by installing it on a Godspeed machine.
 
 No marketplace, social features, payments, elaborate dependency ecosystem or extra infrastructure before that
 workflow works reliably. R2 is the first storage choice, not a property of the package format; Rust is the first
@@ -1143,8 +1221,9 @@ both.
 
 The Godspeed CLI should make Godspeed feel simple without making it dishonest.
 
-A developer should be able to say:
+A developer should be able to say, at a Godspeed machine:
 
+    godspeed fetch foo
     godspeed install foo
 
 and have the system handle:
