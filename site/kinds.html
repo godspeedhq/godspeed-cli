@@ -60,8 +60,10 @@
     </li>
     <li>
       <h3>Install it, on a Godspeed machine</h3>
-<pre><span class="p">gsh&gt; </span>godspeed install &lt;you&gt;/&lt;name&gt;</pre>
-      <p>Installing asks the operator for what the contract requests, by name, and grants nothing else. The
+<pre><span class="p">gsh&gt; </span>godspeed fetch &lt;you&gt;/&lt;name&gt;
+<span class="p">gsh&gt; </span>godspeed install &lt;you&gt;/&lt;name&gt;</pre>
+      <p><code>fetch</code> downloads it and checks every signature; <code>install</code> starts only a package
+      already fetched. Installing asks the operator for what the contract requests, by name, and grants nothing else. The
       contract asks; the machine decides.</p>
     </li>
   </ol>
@@ -81,8 +83,8 @@ pub extern "C" fn service_main(ctx: ServiceContext) -&gt; ! {
       template, and send peers by name.</li>
       <li><strong>Upgraded live:</strong> put <code>handover = true</code> under its contract's <code>[capabilities]</code>, and <code>godspeed upgrade</code> hands
       the old version's state to the new one with no restart.</li>
-      <li><strong>Needs another package?</strong> Name it in <code>godspeed.toml</code>, and the machine installs and
-      starts it first:
+      <li><strong>Needs another package?</strong> Name it in <code>godspeed.toml</code>, and the machine fetches, installs and
+      starts it first. That needs a machine on GodspeedOS v0.30.0 or later:
 <pre>[requires]
 "alice/notes-store" = "^1.2.0"</pre>
       A requirement grants nothing: the contract still names every peer it talks to.</li>

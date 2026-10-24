@@ -41,7 +41,8 @@
 
   <div class="note">
     <p><strong>They build, package, publish and install.</strong> Publish one, then at a Godspeed machine's
-    <code>gsh&gt;</code> prompt, <code>godspeed install &lt;you&gt;/heartbeat</code>. <code>godspeed run</code>, which
+    <code>gsh&gt;</code> prompt, <code>godspeed fetch &lt;you&gt;/heartbeat</code> and then
+    <code>godspeed install &lt;you&gt;/heartbeat</code>. <code>godspeed run</code>, which
     would boot a machine with it from your workstation, still waits on the OS.</p>
   </div>
 
@@ -57,7 +58,7 @@
 Built aarch64 target/aarch64-unknown-none/release/heartbeat
 Built armv7 target/armv7a-none-eabi/release/heartbeat
 Built riscv64 target/riscv64imac-unknown-none-elf/release/heartbeat
-These are service binaries, not an OS image; nothing was installed or run.</span></pre>
+These are program binaries, not an OS image; nothing was installed or run.</span></pre>
 
   <h2>Two things every service has</h2>
   <p><strong>A contract</strong> - <code>contracts/&lt;name&gt;.toml</code> - states the authority the
