@@ -162,7 +162,7 @@ every architecture in CI and explained on the [examples page](https://godspeedhq
 | `fetch <publisher/name>[@version]` | works: downloads a release and verifies it through the registry's whole chain of trust before keeping it |
 | `login`, `whoami`, `logout` | work: a publisher token for a registry, checked with it before it is stored; `logout` revokes it there |
 | `publish` | works: packages every architecture, then reserves, uploads and finalises; if finalising gets no answer it reads the registry's index and reports what it finds, and running it again is always safe; a package whose `[requires]` names a release the registry does not have is refused before anything is uploaded |
-| `install`, `search`, `info`, `list`, `update`, `uninstall` | belong to the native package manager on a Godspeed machine, and say so |
+| `install`, `search`, `info`, `list`, `update`, `upgrade`, `uninstall` | belong to the native package manager on a Godspeed machine, and say so (it has `upgrade`, not `update`) |
 
 A program runs on a Godspeed machine once it is installed there: publish it and `godspeed install` at the
 machine's `gsh>` prompt, or `godspeed package --local` and install the `.gsp` file. What `godspeed run` would add -

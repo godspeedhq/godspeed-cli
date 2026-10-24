@@ -31,11 +31,17 @@ pub fn native(verb: &str) -> Diagnostic {
                  machine. This is the developer CLI: it creates, builds, tests, packages and publishes."
         ),
     )
-    .next(format!(
-        "Run it on the Godspeed machine, at its `gsh>` prompt: `godspeed {verb}` there.{}",
-        match verb {
-            "update" | "uninstall" => format!(" To {verb} this CLI itself: `godspeed self {verb}`."),
-            _ => String::new(),
-        }
-    ))
+    .next(match verb {
+        // The machine has no `update`: a newer release of what is installed is `upgrade` there.
+        "update" => "On the Godspeed machine, at its `gsh>` prompt, a newer release is `godspeed upgrade`, and \
+                     `godspeed list updates` shows what has one. To update this CLI itself: `godspeed self update`."
+            .to_string(),
+        "upgrade" => "Run it on the Godspeed machine, at its `gsh>` prompt: `godspeed upgrade` there. To update \
+                      this CLI itself: `godspeed self update`."
+            .to_string(),
+        "uninstall" => "Run it on the Godspeed machine, at its `gsh>` prompt: `godspeed uninstall` there. To \
+                        uninstall this CLI itself: `godspeed self uninstall`."
+            .to_string(),
+        _ => format!("Run it on the Godspeed machine, at its `gsh>` prompt: `godspeed {verb}` there."),
+    })
 }

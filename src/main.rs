@@ -214,6 +214,11 @@ enum Command {
         _rest: Vec<String>,
     },
     #[command(hide = true)]
+    Upgrade {
+        #[arg(trailing_var_arg = true)]
+        _rest: Vec<String>,
+    },
+    #[command(hide = true)]
     Uninstall {
         #[arg(trailing_var_arg = true)]
         _rest: Vec<String>,
@@ -489,6 +494,7 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
         Command::Install { .. } => Err(cmd::unavailable::native("install").into()),
         Command::List { .. } => Err(cmd::unavailable::native("list").into()),
         Command::Update { .. } => Err(cmd::unavailable::native("update").into()),
+        Command::Upgrade { .. } => Err(cmd::unavailable::native("upgrade").into()),
         Command::Uninstall { .. } => Err(cmd::unavailable::native("uninstall").into()),
     }
 }
