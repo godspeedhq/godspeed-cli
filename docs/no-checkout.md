@@ -1,8 +1,9 @@
 # Installing the CLI should be enough: removing the OS checkout requirement
 
-**Status: option A BUILT, 2026-10-16 (`src/kit.rs`), as the maintainer decided: A now as the bridge, B
-later. Option B was approved 2026-10-17 and is built on both sides (`backlog/01` holds its state); a release
-without the file still uses A. Default release for `godspeed new`: the latest.**
+**Status: BUILT, both options. Option A 2026-10-16 (`src/kit.rs`, released in cli-v0.2.0), as the bridge
+the maintainer chose; option B approved 2026-10-17 and released: GodspeedOS v0.30.0 publishes
+`godspeed-platform.toml` and cli-v0.4.0 reads it (`backlog/fixed/01`). A release without the file still uses
+A. Default release for `godspeed new`: the latest.**
 
 What was built differs from the sketch below in two details: the cache is the platform's cache directory
 (`~/.cache/godspeed/platform/<release>/`, `%LOCALAPPDATA%` on Windows), not `~/.godspeed`; and the tag is
@@ -12,8 +13,9 @@ toolchain matches its pin, or the latest release.
 
 ## The problem
 
-`godspeed` installs in one line (`install/install.sh`, `install/install.ps1`), and then every command but
-`verify` refuses until it is told where a clone of the GodspeedOS repository is (`--os` or `GODSPEED_OS`).
+`godspeed` installs in one line (`install/install.sh`, `install/install.ps1`). Before cli-v0.2.0, every
+command but `verify` then refused until it was told where a clone of the GodspeedOS repository is (`--os` or
+`GODSPEED_OS`).
 A newcomer has to clone a 1,000-file repository to read five small files out of it. That fails the Stranger
 Test before `godspeed new` has run.
 
@@ -67,9 +69,9 @@ side stays in `src/platform.rs`.
 **Recommendation: B, with A as the bridge.** Build the cache and the "no --os needed" path now on option A,
 behind `src/platform.rs`; switch the fetch to B's asset when the OS publishes it, and drop A then.
 
-## Decisions for the maintainer
+## Decisions, as the maintainer took them
 
-1. Option A as a bridge now, or wait for B?
-2. Should the OS's release workflow publish `godspeed-platform.toml` (option B)? That is an OS-repository
-   change.
-3. Default OS release for `godspeed new` with no flag: the latest published release (proposed).
+1. Option A as a bridge now: yes (2026-10-16).
+2. The OS's release workflow publishes `godspeed-platform.toml` (option B): approved 2026-10-17, first
+   published with GodspeedOS v0.30.0.
+3. Default OS release for `godspeed new` with no flag: the latest published release.

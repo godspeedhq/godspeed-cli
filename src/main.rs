@@ -47,7 +47,7 @@ struct Cli {
 enum Command {
     /// Create a new project: `service`, `utility`, `app`, `driver` or `library`
     New {
-        /// service | library
+        /// service | utility | app | driver | library
         kind: String,
         /// The project's name, as the OS contract schema allows it
         name: String,

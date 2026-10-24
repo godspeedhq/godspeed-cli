@@ -13,7 +13,7 @@
 //!   `--cfg curve25519_dalek_backend="serial"` in RUSTFLAGS: the Ed25519 library otherwise picks a SIMD
 //!   backend that target cannot compile, and offers no Cargo feature to choose. Other targets need nothing.
 //! - **The `toml` feature** reads and writes the manifest's text form. It needs `std` and a heap, so it is
-//!   host-only. (How the native side will read the text without a heap is an open question; see the
+//!   host-only. (The native side reads the text without a heap with a reader of its own, in GodspeedOS; see the
 //!   format document.)
 //!
 //! # What this crate does not decide

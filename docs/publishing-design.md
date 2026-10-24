@@ -1,7 +1,8 @@
 # Publishing: the registry protocol, its control plane, and its trust model
 
-**Status: DESIGN, decisions taken 2026-10-15 (section 9). Being built in `godspeed-registry`.** It is the
-design `godspeed publish` waits on.
+**Status: BUILT and live, decisions taken 2026-10-15 (section 9).** `godspeed-registry` is the Worker at
+`https://godspeed-registry.bankole-422.workers.dev`, first published to on 2026-10-16, and `godspeed publish`
+uses it. Phase 2 (trusted publishing from CI, section 4) is not built, and neither is the custom domain.
 
 Storage is chosen: the Cloudflare R2 bucket `godspeedos-packages`, with a custom domain to come. Everything
 else here is built so that choice stays an implementation detail (CLAUDE.md, "External Services").
@@ -14,7 +15,8 @@ else here is built so that choice stays an implementation detail (CLAUDE.md, "Ex
        |                                     |
        | godspeed publish                    | godspeed install, search, info  (or curl)
        v                                     v
-    publishing API  (Cloudflare Worker)    https://<custom domain>/   (static, read-only)
+    publishing API  (Cloudflare Worker)    https://<custom domain>/   (static, read-only; not yet:
+                                           the Worker serves reads today)
        |   authenticates the publisher            ^
        |   checks the namespace                   |
        |   verifies the package                   |
@@ -26,9 +28,11 @@ else here is built so that choice stays an implementation detail (CLAUDE.md, "Ex
 
 Two paths, deliberately separate:
 
-- **Reading is static.** The index and every package are plain files served from the custom domain. No API
-  call, no account, no R2-specific interface. Downloads keep working when the publishing API is down,
-  because nothing on the read path is the publishing API.
+- **Reading is meant to be static.** The index and every package are plain files, to be served from the
+  custom domain: no API call, no account, no R2-specific interface, and downloads that keep working when the
+  publishing API is down. **Until that domain exists, the Worker serves the reads too** (`GET /trust/...`,
+  `/index/...`, `/packages/...`, straight from the bucket), so today a Worker outage stops downloads as well
+  as publishing.
 - **Writing goes through one small trusted service**, which holds the bucket binding. No developer, CI job
   or CLI ever holds storage credentials, unrestricted or otherwise.
 
@@ -38,11 +42,12 @@ and is an administrator's tool. The CLI never names it.
 ## 2. The bucket layout
 
     packages/<publisher>/<name>/<version>/manifest.toml
+    packages/<publisher>/<name>/<version>/manifest.sig
     packages/<publisher>/<name>/<version>/contract.toml
     packages/<publisher>/<name>/<version>/<arch>.elf
     index/<publisher>/<name>.toml
-    index/root.json            (section 6)
-    index/timestamp.json       (section 6)
+    trust/root/<n>.toml, trust/namespaces.toml, trust/snapshot.toml, trust/timestamp.toml
+                               (each with a .sig; section 6, `docs/trust-metadata.md`)
 
     staging/<publisher>/<name>/<version>/<upload-id>/...   (in-progress uploads; section 3)
 
@@ -67,13 +72,13 @@ One file per package, listing every published version:
     format = 1
     name = "alice/hello"
 
-    [[version]]
+    [[release]]
     version = "1.0.0"
     manifest = "sha256:..."     # digest of that version's manifest.toml
     published = "2026-11-02T10:14:00Z"
-    publisher = "alice"         # the authenticated account that published it (section 4)
+    published_by = "alice"      # the authenticated account that published it (section 4)
 
-    [[version]]
+    [[release]]
     version = "1.1.0"
     ...
 
@@ -81,9 +86,9 @@ The manifest digest is the link from mutable to immutable: the index names a man
 manifest names every other file by its bytes. Trust the index entry and you can verify everything under
 it without trusting the storage, the CDN or the network.
 
-`godspeed search` and `godspeed info` read these files. There is no search service: a top-level listing
-(`index/packages.toml`, every name and its latest version) is enough for a registry this size, and is
-rebuilt at each finalisation.
+`godspeed search` and `godspeed info`, on a Godspeed machine, read these files. There is no search service
+and no separate listing: search reads the signed snapshot, which names every package's index, and then the
+indexes (`backlog/02` is what that costs at scale).
 
 ## 3. Publishing, step by step
 
@@ -91,22 +96,25 @@ The CLI's side, in the order its output reports it (CLAUDE.md, "Publishing Exper
 reported only once its outcome is established:
 
 1. **Validate, build, package, verify**: `godspeed package`, unchanged.
-2. **Authenticate** (section 4).
-3. **Reserve** `alice/hello@1.0.0`: `POST /v1/reservations` with the manifest. The API checks the token may
+2. **Sign** the manifest with the publisher's key (section 6), on the publisher's machine.
+3. **Authenticate** (section 4).
+4. **Reserve** `alice/hello@1.0.0`: `POST /v1/packages/alice/hello/reservations` with the manifest. The API checks the token may
    publish under `alice`, that 1.0.0 does not exist and is not reserved, and that the manifest is valid.
    It returns an upload id and an expiry (15 minutes). **Concurrent publishes are decided here**: exactly
    one reservation per version succeeds; the other is told "1.0.0 is being published by another upload"
    or "1.0.0 already exists", and nothing it does can overwrite the winner.
-4. **Upload** each file: `PUT /v1/uploads/<id>/<file>`. The Worker writes to `staging/`. Only the files
+5. **Upload** each file, `manifest.sig` among them: `PUT /v1/packages/alice/hello/1.0.0/uploads/<id>/<file>`. The Worker writes to `staging/`. Only the files
    the reserved manifest names are accepted, each checked against its declared size and digest as it
    streams in - the same `ArtifactVerifier`, compiled to WebAssembly, that the CLI and the native package
    manager use. A file that fails is refused at once.
-5. **Sign** (section 6) and **finalise**: `POST /v1/uploads/<id>/finalise`. The API re-verifies the whole
-   staged package, copies it to `packages/.../<version>/`, then writes the index entry, then the timestamp.
+6. **Finalise**: `POST /v1/packages/alice/hello/1.0.0/uploads/<id>/finalise`. The API re-verifies the whole
+   staged package and its signature, copies it to `packages/.../<version>/`, then writes the index entry,
+   then re-signs the snapshot and the timestamp.
    **The index write is the commit point.** Before it, the version does not exist for any reader; after it,
    every file it names is already in place. A crash anywhere before it leaves only staged files, which no
    index names and the lifecycle rule sweeps.
-6. **Report** `Published alice/hello@1.0.0` and the install line.
+7. **Report** `Published alice/hello@1.0.0` and the lines to install it (`godspeed fetch`, then
+   `godspeed install`, on a machine).
 
 ### When the outcome is unknown
 
@@ -172,17 +180,19 @@ as the reference for exactly that, and this section follows its roles rather tha
 
 | TUF role | Here | Key held |
 |---|---|---|
-| root | `index/root.json`: lists the keys allowed for every other role, and itself | offline, by the maintainer; 2 of 3 to change it (to confirm) |
+| root | `trust/root/<n>.toml`: lists the keys allowed for every other role, and itself | offline, by the maintainer; 2 of 3 to change it |
 | targets, delegated | each **publisher** signs their own release: the canonical bytes of `manifest.toml` | by the publisher, on their machine; CI via phase 2 |
 | snapshot | the set of current index files and their digests | online, by the Worker |
-| timestamp | `index/timestamp.json`: the snapshot's digest, expiring in a day | online, by the Worker |
+| namespaces | `trust/namespaces.toml`: each publisher's keys, active, retired or revoked | offline, by the maintainer; 1 of 2 |
+| timestamp | `trust/timestamp.toml`: the snapshot's digest, expiring in a day | online, by the Worker |
 
 What each defends against:
 
 - **A swapped artifact**: the manifest digest no longer matches. (Already true today.)
-- **A forged release**: the manifest is not signed by a key the root lists for that namespace.
-- **A swapped publisher key**: keys are listed in root-signed metadata, so changing one needs the offline
-  root keys, not a compromised Worker.
+- **A forged release**: the manifest is not signed by a key the offline-signed `namespaces` document lists
+  for that publisher.
+- **A swapped publisher key**: keys are listed in `namespaces`, signed offline, so changing one needs the
+  offline namespaces keys, not a compromised Worker.
 - **A replayed old index (rollback or freeze)**: the timestamp expires daily and versions only increase;
   a reader refuses metadata older than what it last saw.
 - **A compromised Worker**: it can withhold or delay releases, but cannot forge a publisher's signature, so
@@ -218,8 +228,8 @@ exact checks are `docs/trust-metadata.md`.
 - **`godspeed fetch`** is the client: it verifies root, timestamp, snapshot, namespaces, index, manifest,
   signature and files before keeping anything, remembers the root and the newest versions it has seen, and
   refuses rollback.
-- **The root threshold is the maintainer's choice when making the root**; the format takes any. The
-  recommendation stands: two of three root keys, held apart.
+- **The root threshold is the maintainer's choice when making the root**; the format takes any. Root 1,
+  the official registry's, is two of three root keys, held apart.
 
 **What it defends against now:** a swapped artifact, index, snapshot or namespaces document; a forged
 release; a publisher key added or swapped by anyone without the offline namespaces keys - including a fully
@@ -244,21 +254,23 @@ key.
 
 ## 8. Order of work
 
-1. This design, reviewed and decided.
-2. The registry repository: the Worker, reservation and finalisation, D1 records, the static read path on
-   the custom domain. Tested against a local R2 (`wrangler dev`) before the real bucket.
+1. This design, reviewed and decided. Done, 2026-10-15.
+2. The registry repository: the Worker, reservation and finalisation, D1 records. Done, tested against a
+   local R2 (`wrangler dev`) before the real bucket. The static read path on the custom domain is not built:
+   the Worker serves reads.
 3. The CLI: `login`/`logout`/`whoami` (phase 1 tokens), `publish`, and the unknown-outcome reconciliation.
-4. Signing: publisher keys, `manifest.sig`, root/snapshot/timestamp, verification in the package crate.
-   **The first public publish waits for this step** (CLAUDE.md: key registration, rotation and revocation
-   are "defined before the first public publish, not after").
-5. Phase 2 trusted publishing from CI.
+   Done.
+4. Signing: publisher keys, `manifest.sig`, root/namespaces/snapshot/timestamp, verification in the package
+   crate. Done, before the first public publish on 2026-10-16, as CLAUDE.md requires.
+5. Phase 2 trusted publishing from CI. Not built.
 
 ## 9. Decisions (taken 2026-10-15)
 
-1. **Phase 1 authentication: hand-issued, namespace-scoped API tokens.** Lifetime still open (90 days
-   proposed).
+1. **Phase 1 authentication: hand-issued, namespace-scoped API tokens.** Lifetime 90 days by default, 1 to
+   366 at the maintainer's choice when approving one.
 2. **The control plane is a Cloudflare Worker, in a separate `godspeed-registry` repository.**
 3. **D1 plus a Durable Object per package** for reservations (taken with 2: the Worker's design).
 4. **TUF's four roles, implemented directly** (no TUF library), so verification can be `no_std`. Root
-   keys offline, 2 of 3 still to confirm.
-5. Open: the custom domain's name, and whether it is the CLI's default registry URL.
+   keys offline, two of three.
+5. Open: the custom domain's name. When it exists, the CLI's default registry moves to it in a CLI release;
+   until then the default is the Worker's own URL.

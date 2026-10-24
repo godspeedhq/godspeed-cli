@@ -20,6 +20,11 @@ A Godspeed service, created by `godspeed new service heartbeat` against Godspeed
 
 ## Run and test
 
-Not yet. GodspeedOS can only run a service compiled into its own image, and it has no public way to
-add one from outside its source tree. `godspeed run` and `godspeed test` say so, and say what is
-missing, rather than editing the OS for you.
+Package and publish it (`godspeed package`, `godspeed publish`), then on a Godspeed machine (GodspeedOS 0.29.0
+or later):
+
+    godspeed fetch <publisher>/heartbeat
+    godspeed install <publisher>/heartbeat
+
+The supervisor starts it, and starts it again at every boot. `godspeed run` and `godspeed test` refuse a service,
+and say why: nothing yet boots a machine with your program already on it.
