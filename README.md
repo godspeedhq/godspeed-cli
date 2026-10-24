@@ -62,7 +62,10 @@ uninstall godspeed-cli` instead.
 
 Or build it yourself with Rust:
 
-    cargo install --git https://github.com/godspeedhq/godspeed-cli --tag cli-v0.4.0 --locked godspeed-cli
+    cargo install --git https://github.com/godspeedhq/godspeed-cli --tag <release tag> --locked godspeed-cli
+
+where `<release tag>` is the latest release's, `cli-v` and its version
+([releases](https://github.com/godspeedhq/godspeed-cli/releases)).
 
 A checksum proves a download is the file the release lists; releases are not signed yet.
 
@@ -228,10 +231,10 @@ namespaces, index, manifest, signature, files ([docs/trust-metadata.md](docs/tru
 
     godspeed fetch godspeed/hello --offline [--arch x86_64|aarch64|armv7|riscv64|all]
 
-writes `hello-0.3.0.gsp` (`.gsp` for GodspeedOS Package): every document that fetch read and checked - the roots from root 1, the timestamp,
+writes `hello-<version>.gsp`, the highest published version unless you name one (`.gsp` for GodspeedOS Package): every document that fetch read and checked - the roots from root 1, the timestamp,
 snapshot, namespaces, the package's index, its manifest, signature and contract, and its binaries (all of them, or
 the one `--arch` names) - under the paths the registry serves them at, so a machine checks it exactly as it
-checks the registry, from the root it already trusts. On the machine, `godspeed install hello-0.3.0.gsp`.
+checks the registry, from the root it already trusts. On the machine, `godspeed install hello-<version>.gsp`.
 
 **A package that was never published** - built on a machine with no network, say - is
 
@@ -316,6 +319,6 @@ The ignored tests need the OS's pinned toolchain with its four targets, and netw
 stdlib at its release tag.
 
 CI (`.github/workflows/ci.yml`) runs both: formatting, lints and the offline tests on Linux and Windows,
-then every template generated and built against each GodspeedOS release in its matrix (`os_ref`, v0.30.0
-today), for every architecture that release builds, with `godspeed doctor` run first as the gate a developer
+then every template generated and built against each GodspeedOS release in its matrix (`os_ref`), for
+every architecture that release builds, with `godspeed doctor` run first as the gate a developer
 would hit.
