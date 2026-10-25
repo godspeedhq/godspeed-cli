@@ -1,10 +1,10 @@
 # 1. The platform kit reads six of the OS repository's private build files, and hard-codes a seventh fact
 
-**Status: OPEN - recorded 2026-10-17. Option A (the bridge) is built and released in `cli-v0.2.0`. Option
-B was APPROVED by the maintainer on 2026-10-17 (the OS's `docs/developer-services-design.md` 11.5) and is
-built on both sides, released on neither: the OS writes the file from its next release (its
-`scripts/platform_file.py`), and the CLI side is on branch `feat/platform-file`, to be released after
-that OS release. It closes when a released CLI has read the file from a published OS release.**
+**Status: FIXED 2026-10-24 (closed in place; the condition below was met with GodspeedOS v0.30.0 and
+cli-v0.4.0, both published 2026-10-23). Recorded 2026-10-17. Option A (the bridge) was built and released in
+`cli-v0.2.0`. Option B was APPROVED by the maintainer on 2026-10-17 (the OS's
+`docs/developer-services-design.md` 11.5) and built on both sides. It was to close when a released CLI had
+read the file from a published OS release.**
 
 ## What is wrong
 
@@ -112,3 +112,17 @@ mode in `osdev`'s `EXTRA_CHECKS`, and what it does not do, is section 11 of the 
   now sees the platform file asked for, and missed, before the six files.
 - The OS side was checked against this reader with its own output: `scripts/platform_file.py --out` on
   the OS repository at `bd4aee44`.
+
+## Closed, 2026-10-24
+
+GodspeedOS v0.30.0 publishes `godspeed-platform.toml` among its release assets: `format = 1`, `os = "0.30.0"`,
+its commit, the stdlib crate and tag, the toolchain and targets, `[link] entry = "service_main"` and the
+linker script, the compiler flags, and every file's digest. cli-v0.4.0's `src/kit.rs` fetches it first
+(`fetch_platform_file`) and builds a kit from it, so a v0.30.0 project is built from the published contract
+and not from the OS's private build files; the entry symbol, the seventh fact, comes from `[link] entry`.
+A release before 0.30.0 has no file and still uses option A, which is why A stays in the CLI.
+
+What the post-mortem is worth: the six files the kit read were the OS's build inputs, not a contract, and
+nothing would have noticed them moving. The fix was a published file the OS's release workflow writes
+(`scripts/platform_file.py` there), checked against `SHA256SUMS`, with a `format` a reader refuses when it
+does not know it.

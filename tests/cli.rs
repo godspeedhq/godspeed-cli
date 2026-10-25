@@ -889,11 +889,17 @@ fn native_package_manager_verbs_point_at_the_right_program() {
         &["search", "clock"],
         &["uninstall", "x"],
         &["list"],
+        &["update"],
+        &["upgrade", "alice/hello"],
     ] {
         let o = godspeed(&dir, None, args);
         assert_eq!(code(&o), 22, "{args:?}");
         assert!(stderr(&o).contains("native package manager"));
     }
+    // The machine has no `update`, so the answer must not send anyone to run one there.
+    let o = godspeed(&dir, None, &["update"]);
+    assert!(stderr(&o).contains("godspeed upgrade"), "{}", stderr(&o));
+    assert!(!stderr(&o).contains("`godspeed update` there"), "{}", stderr(&o));
 }
 
 /// The whole first half of the workflow on a real OS checkout: new, check, build for every

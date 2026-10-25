@@ -14,8 +14,9 @@ GodspeedOS release - and fetch anyone's published package with every signature c
 The rules the CLI is built to are in [CLAUDE.md](CLAUDE.md).
 
 **Status:** the first half of the workflow works end to end - create, check, build, test (libraries),
-package, sign, publish, fetch - against the live registry. Installing and running on a Godspeed machine
-waits on the OS ([below](#what-works-and-what-cannot-yet)). Godspeed programs are written in Rust today
+package, sign, publish, fetch - against the live registry, and a Godspeed machine (GodspeedOS 0.29.0 and later)
+fetches and installs what you publish. What waits on the OS is `godspeed run`, booting a machine with your
+program already on it, and so a program's `godspeed test` ([below](#what-works-and-what-cannot-yet)). Godspeed programs are written in Rust today
 ([why, and what about C, C++ or Go](#other-languages)).
 
 ## Install
@@ -61,7 +62,10 @@ uninstall godspeed-cli` instead.
 
 Or build it yourself with Rust:
 
-    cargo install --git https://github.com/godspeedhq/godspeed-cli --tag cli-v0.4.0 --locked godspeed-cli
+    cargo install --git https://github.com/godspeedhq/godspeed-cli --tag <release tag> --locked godspeed-cli
+
+where `<release tag>` is the latest release's, `cli-v` and its version
+([releases](https://github.com/godspeedhq/godspeed-cli/releases)).
 
 A checksum proves a download is the file the release lists; releases are not signed yet.
 
@@ -116,14 +120,15 @@ Its source is [`site/`](site/), plain HTML published by `.github/workflows/pages
 | `service` | kept running by the system: started at every boot, restarted if it dies, upgraded live if its contract declares `handover` | `godspeed new service clock`: logs that it started, then waits |
 | `utility` | does one job when typed at `gsh>`, ends with a status, takes arguments and pipes (`gs::program`) | `godspeed new utility greet`: `greet Bankole` prints `hello, Bankole` |
 | `app` | has the screen and the keyboard while it runs, and gives them back when it ends (`gs::app`); the operator approves the console at install | `godspeed new app notes`: says hello until a key is pressed |
-| `driver` | drives one device, named in its contract by PCI class code and register BAR, given that device's register window only, written on `gs::driver` (`registers`, `wait`, `delay`) like the OS's own drivers; **needs GodspeedOS 0.30.0** | `godspeed new driver sensor`: drives QEMU's `edu` and logs `5! = 120` |
+| `driver` | drives one device, named in its contract by PCI class code (or a USB device by vendor and product, `hw_usb`), written on `gs::driver` like the OS's own drivers: its register window, its interrupt, a DMA arena the operator agrees to, a device the OS drives taken over, a USB device through its host (`bus`); **registers need GodspeedOS 0.30.0, the rest 0.31.0** | `godspeed new driver sensor`: drives QEMU's `edu` by its registers, its interrupt and DMA, and logs `5! = 120 by interrupt, 64 bytes through DMA and back intact` |
 | `library` | reusable `no_std` Rust for the others; never installed, and its tests run on your workstation | `godspeed new library parser` |
 
 Every template is written on the public standard library, `gs`, and nothing below it. CI makes, checks and builds
 every kind for all four architectures (`tests/cli.rs`, `every_generated_program_builds_for_every_architecture`),
 and GodspeedOS installs each of the four program templates from a package file and sees it work
-(`osdev test kinds` there). A kind the OS cannot run would be refused with the reason, never given a template that
-pretends. The [guide](https://godspeedhq.github.io/godspeed-cli/kinds.html) takes each kind end to end.
+(`osdev test kinds` there). The driver template asks for its interrupt and a DMA arena, which GodspeedOS has
+from v0.31.0, so against v0.30.0 `godspeed new driver` makes it and `godspeed check` refuses its contract
+(`'hw_dma' was unexpected`). The [guide](https://godspeedhq.github.io/godspeed-cli/kinds.html) takes each kind end to end.
 
 ## Use
 
@@ -147,7 +152,7 @@ every architecture in CI and explained on the [examples page](https://godspeedhq
 
 | command | status |
 |---|---|
-| `new service`, `new utility`, `new app`, `new driver`, `new library` | works (a driver against GodspeedOS 0.30.0 or later) |
+| `new service`, `new utility`, `new app`, `new driver`, `new library` | works (a driver against GodspeedOS 0.30.0 or later for its registers; the template, which asks for an interrupt and DMA, against v0.31.0 or later) |
 | `check` | works: the project, its toolchain pin, its stdlib release, and the contract against the OS's schema |
 | `build [--arch <isa> \| --all]` | works: one ELF per architecture for a program, an rlib for a library |
 | `test` | works for a library (on the host); refused for a program, which runs only on a Godspeed machine (see below) |
@@ -162,10 +167,10 @@ every architecture in CI and explained on the [examples page](https://godspeedhq
 | `fetch <publisher/name>[@version]` | works: downloads a release and verifies it through the registry's whole chain of trust before keeping it |
 | `login`, `whoami`, `logout` | work: a publisher token for a registry, checked with it before it is stored; `logout` revokes it there |
 | `publish` | works: packages every architecture, then reserves, uploads and finalises; if finalising gets no answer it reads the registry's index and reports what it finds, and running it again is always safe; a package whose `[requires]` names a release the registry does not have is refused before anything is uploaded |
-| `install`, `search`, `info`, `list`, `update`, `uninstall` | belong to the native package manager on a Godspeed machine, and say so |
+| `install`, `search`, `info`, `list`, `update`, `upgrade`, `uninstall` | belong to the native package manager on a Godspeed machine, and say so (it has `upgrade`, not `update`) |
 
-A program runs on a Godspeed machine once it is installed there: publish it and `godspeed install` at the
-machine's `gsh>` prompt, or `godspeed package --local` and install the `.gsp` file. What `godspeed run` would add -
+A program runs on a Godspeed machine once it is installed there: publish it, then `godspeed fetch` and
+`godspeed install` at the machine's `gsh>` prompt, or `godspeed package --local` and install the `.gsp` file. What `godspeed run` would add -
 booting a machine in QEMU or on hardware with your program already on it - needs an OS interface that does not
 exist yet, so it says so rather than building the OS image for you.
 
@@ -225,10 +230,10 @@ namespaces, index, manifest, signature, files ([docs/trust-metadata.md](docs/tru
 
     godspeed fetch godspeed/hello --offline [--arch x86_64|aarch64|armv7|riscv64|all]
 
-writes `hello-0.3.0.gsp` (`.gsp` for GodspeedOS Package): every document that fetch read and checked - the roots from root 1, the timestamp,
+writes `hello-<version>.gsp`, the highest published version unless you name one (`.gsp` for GodspeedOS Package): every document that fetch read and checked - the roots from root 1, the timestamp,
 snapshot, namespaces, the package's index, its manifest, signature and contract, and its binaries (all of them, or
 the one `--arch` names) - under the paths the registry serves them at, so a machine checks it exactly as it
-checks the registry, from the root it already trusts. On the machine, `godspeed install hello-0.3.0.gsp`.
+checks the registry, from the root it already trusts. On the machine, `godspeed install hello-<version>.gsp`.
 
 **A package that was never published** - built on a machine with no network, say - is
 
@@ -313,5 +318,6 @@ The ignored tests need the OS's pinned toolchain with its four targets, and netw
 stdlib at its release tag.
 
 CI (`.github/workflows/ci.yml`) runs both: formatting, lints and the offline tests on Linux and Windows,
-then every template generated and built against each supported GodspeedOS release, for every
-architecture that release builds, with `godspeed doctor` run first as the gate a developer would hit.
+then every template generated and built against each GodspeedOS release in its matrix (`os_ref`), for
+every architecture that release builds, with `godspeed doctor` run first as the gate a developer
+would hit.

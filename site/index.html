@@ -63,8 +63,8 @@
     </a>
     <a class="card" href="kinds.html#driver">
       <h3>Driver <span class="tag ok">works</span></h3>
-      <p>Drives one device, named by its PCI class, written on <code>gs::driver</code> like the OS's own
-      drivers.</p>
+      <p>Drives one device, named by its PCI class or as a USB device, written on <code>gs::driver</code> like
+      the OS's own drivers: its registers, its interrupt, DMA.</p>
       <p><code>godspeed new driver sensor</code></p>
     </a>
     <a class="card" href="kinds.html#library">
@@ -74,6 +74,7 @@
     </a>
   </div>
   <p>A service, a utility and an app build against GodspeedOS v0.29.0 or later; a driver against v0.30.0 or
+  later for its registers, and the template, which uses its interrupt and DMA as well, against v0.31.0 or
   later. CI makes, checks and builds every kind for all four architectures, and
   <a href="examples.html">the examples</a> are built the same way.</p>
 
@@ -98,7 +99,7 @@
       time, then keeps them.</p>
 <pre><span class="p">$ </span>godspeed doctor
 <span class="o">Fetching the GodspeedOS 0.30.0 platform kit (once for each release)...
-GodspeedOS                 ok       0.30.0 (platform kit, cached in ~/.cache/godspeed/platform/0.30.0)
+GodspeedOS                 ok       0.30.0 (platform kit from 9386b0aeb89f, cached in ~/.cache/godspeed/platform/0.30.0)
 Rust toolchain             ok       nightly-2026-05-16</span></pre>
       <p><code>doctor</code> checks the toolchain, all four targets and QEMU, and prints the command that
       fixes anything missing. Working on GodspeedOS itself? <code>--os &lt;path&gt;</code> builds against your
@@ -116,7 +117,7 @@ Rust toolchain             ok       nightly-2026-05-16</span></pre>
 Fetching dependencies...
 Building hello for x86_64 (x86_64-unknown-none)...
 Built x86_64 target/x86_64-unknown-none/release/hello
-These are service binaries, not an OS image; nothing was installed or run.</span></pre>
+These are program binaries, not an OS image; nothing was installed or run.</span></pre>
       <p>It is an ordinary Rust project, so <code>cargo fmt</code> and <code>cargo clippy</code> work in it
       as usual, with the compiler the OS pins.</p>
     </li>
@@ -149,7 +150,7 @@ What the contract requests is not granted by installing it.</span></pre>
     <tr><td>Test a library</td><td><span class="tag ok">works</span></td></tr>
     <tr><td>Package, sign, verify; a <code>.gsp</code> file for a machine with no network</td><td><span class="tag ok">works</span></td></tr>
     <tr><td>Publish, and fetch with every signature checked</td><td><span class="tag ok">works</span></td></tr>
-    <tr><td>A package that requires another (<code>[requires]</code>)</td><td><span class="tag ok">works</span> the machine installs and starts what it needs first</td></tr>
+    <tr><td>A package that requires another (<code>[requires]</code>)</td><td><span class="tag ok">works</span> the machine fetches, installs and starts what it needs first, on GodspeedOS v0.30.0 or later</td></tr>
     <tr><td><code>godspeed install</code> on a Godspeed machine</td><td><span class="tag ok">works</span> at its <code>gsh&gt;</code> prompt: the native package manager</td></tr>
     <tr><td>Test a service, a utility, an app or a driver here</td><td><span class="tag no">waits on the OS</span> each runs only on a Godspeed machine</td></tr>
     <tr><td><code>godspeed run</code></td><td><span class="tag no">waits on the OS</span> no public way yet to boot a machine with a program built outside the OS tree</td></tr>

@@ -32,6 +32,11 @@ repository.
 
 | # | Item | Severity | Blocks |
 |---|------|----------|--------|
-| [1](01-the-platform-kit-reads-the-os-repository-s-private-build-files.md) | The platform kit reads six of the OS repository's own build files at their paths, and hard-codes the entry symbol no file holds; option B (the OS publishes `godspeed-platform.toml`) is approved and built on both sides, released on neither | Contract / fragility | nothing today; any OS release that moves one of the six files |
-| [2](02-one-snapshot-names-every-package-so-every-client-downloads-it-all.md) | One signed snapshot names every package, so every client downloads all of it whenever it changes (the native side's 150-package cliff is fixed: it keeps the snapshot on disk and reads it by offset) | Scale | nothing today (two packages); bandwidth at a large registry |
+| [2](02-one-snapshot-names-every-package-so-every-client-downloads-it-all.md) | One signed snapshot names every package, so every client downloads all of it whenever it changes (the native side's 150-package cliff is fixed: it keeps the snapshot on disk and reads it by offset) | Scale | nothing today (nine packages, 2026-10-24); bandwidth at a large registry |
 | [3](03-an-offline-file-does-not-carry-what-its-package-requires.md) | `fetch --offline` writes one release, so a package with requirements needs a file per requirement, installed in order; the operator suggested `--offline --dependencies` (design 16.7 makes it the default), flag or default still to decide | Usability | an offline install of any format-2 package |
+
+## Fixed
+
+| # | Item | Fixed |
+|---|------|-------|
+| [1](fixed/01-the-platform-kit-reads-the-os-repository-s-private-build-files.md) | The platform kit read six of the OS repository's own build files and hard-coded the entry symbol; GodspeedOS v0.30.0 publishes `godspeed-platform.toml` and cli-v0.4.0 reads it | 2026-10-24 |

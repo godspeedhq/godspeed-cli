@@ -42,11 +42,11 @@
   <h3>Making and building</h3>
   <div class="table-scroll"><table>
     <tr><th>Command</th><th>What it does</th></tr>
-    <tr><td><code>new service &lt;name&gt;</code><br><code>new utility &lt;name&gt;</code><br><code>new app &lt;name&gt;</code><br><code>new driver &lt;name&gt;</code><br><code>new library &lt;name&gt;</code></td><td>Create the smallest valid project of that kind, against the OS release you build with (<a href="kinds.html">What you can make</a> has each). <code>--os-release &lt;version&gt;</code> picks the GodspeedOS release (default: the latest); <code>--dir</code> puts it elsewhere; <code>--publisher &lt;you&gt;</code> fills in the <code>publisher</code>, so it can be packaged straight away (never for a library, which is not packaged). A driver needs GodspeedOS v0.30.0 or later.</td></tr>
+    <tr><td><code>new service &lt;name&gt;</code><br><code>new utility &lt;name&gt;</code><br><code>new app &lt;name&gt;</code><br><code>new driver &lt;name&gt;</code><br><code>new library &lt;name&gt;</code></td><td>Create the smallest valid project of that kind, against the OS release you build with (<a href="kinds.html">What you can make</a> has each). <code>--os-release &lt;version&gt;</code> picks the GodspeedOS release (default: the latest); <code>--dir</code> puts it elsewhere; <code>--publisher &lt;you&gt;</code> fills in the <code>publisher</code>, so it can be packaged straight away (never for a library, which is not packaged). A driver needs GodspeedOS v0.30.0 or later; the template, which asks for an interrupt and a DMA arena, v0.31.0 or later.</td></tr>
     <tr><td><code>check</code></td><td>Validate the project, its toolchain pin, its stdlib release, and its contract against the OS's schema - without building.</td></tr>
     <tr><td><code>build [--arch &lt;isa&gt; | --all]</code></td><td>Build for one architecture (default <code>x86_64</code>; also <code>aarch64</code>, <code>armv7</code>, <code>riscv64</code>) or every one the OS supports. A program gives one ELF per architecture; a library, an rlib.</td></tr>
     <tr><td><code>test</code></td><td>Run a library's tests on your workstation. Refused for a service, a utility, an app or a driver, which run only on a Godspeed machine.</td></tr>
-    <tr><td><code>run</code></td><td>Refused, with the reason: there is no public way yet to boot a Godspeed machine with your program on it. Meanwhile <code>package --local</code> and <code>godspeed install</code> on the machine run it.</td></tr>
+    <tr><td><code>run [--target qemu|hardware]</code></td><td>Refused, with the reason: there is no public way yet to boot a Godspeed machine with your program on it. Meanwhile <code>package --local</code> and <code>godspeed install</code> on the machine run it.</td></tr>
     <tr><td><code>doctor [--json]</code></td><td>Check your environment: this CLI's version against the latest release, the OS checkout, the pinned toolchain, every target, QEMU. Says the command that fixes each problem.</td></tr>
   </table></div>
 
@@ -69,7 +69,7 @@
     <tr><td><code>verify &lt;dir&gt; [--json]</code></td><td>Check every file of a package directory against its manifest, and its signature if it has one. Needs no OS checkout and no registry.</td></tr>
     <tr><td><code>sign &lt;dir&gt;</code></td><td>Sign a package directory with your key (writes <code>manifest.sig</code>) and verify the result. <code>publish</code> does this for you.</td></tr>
     <tr><td><code>fetch &lt;publisher/name&gt;[@version] [--out &lt;dir&gt;] [--trust-root sha256:...] [--offline [--arch &lt;isa&gt;|all]] [--json]</code></td><td>Download a release (default: the highest version) and verify it through the registry's whole chain of trust before keeping it. The official registry's root is built in; <code>--trust-root</code> pins another's. <code>--offline</code> writes the release and every document that checked it as one <code>.gsp</code> file, which a machine with no network installs.</td></tr>
-    <tr><td><code>inspect &lt;file&gt;.gsp | &lt;publisher/name&gt;[@version] [--json]</code></td><td>Check a <code>.gsp</code> file offline, or a release on the registry, exactly as installing it would - and keep nothing.</td></tr>
+    <tr><td><code>inspect &lt;file&gt;.gsp | &lt;publisher/name&gt;[@version] [--trust-root sha256:...] [--json]</code></td><td>Check a <code>.gsp</code> file offline, or a release on the registry, exactly as installing it would - and keep nothing.</td></tr>
   </table></div>
 
   <h3>Publishing</h3>
@@ -85,9 +85,15 @@
   </table></div>
 
   <h3>Belonging to a Godspeed machine</h3>
-  <p><code>install</code>, <code>search</code>, <code>info</code>, <code>list</code>, <code>update</code> and
-  <code>uninstall</code> belong to the native package manager, a separate program that runs on a Godspeed
-  machine. This CLI recognises them and says so (exit 22), rather than doing something else under their name.</p>
+  <p><code>install</code>, <code>search</code>, <code>info</code>, <code>list</code>, <code>update</code>,
+  <code>upgrade</code> and <code>uninstall</code> belong to a Godspeed machine, not to this CLI. This CLI recognises them and says so
+  (exit 22), rather than doing something else under their name.</p>
+  <p>The machine's own package manager, at its <code>gsh&gt;</code> prompt, has <code>search</code>,
+  <code>info</code>, <code>list</code>, <code>fetch</code>, <code>verify</code>, <code>inspect</code>,
+  <code>plan</code>, <code>resolve</code>, <code>install</code>, <code>upgrade</code>, <code>uninstall</code>,
+  <code>remove</code>, <code>cleanup</code>, <code>trust</code>, <code>registry</code>, <code>config</code> and
+  <code>check</code>. It has no <code>update</code>: a newer release is <code>godspeed upgrade</code>, and
+  <code>godspeed list updates</code> shows what has one.</p>
 
   <h2 id="options">Options every command takes</h2>
   <div class="table-scroll"><table>
@@ -144,7 +150,7 @@ x86_64.elf  aarch64.elf  armv7.elf  riscv64.elf</pre>
 
   <h2 id="exit-codes">Exit codes</h2>
   <p>Scripts and CI can tell failures apart without reading the text.</p>
-  <p><code>doctor</code>, <code>verify</code>, <code>package</code>, <code>fetch</code> and <code>whoami</code> take <code>--json</code>: the result is
+  <p><code>doctor</code>, <code>verify</code>, <code>package</code>, <code>fetch</code>, <code>inspect</code> and <code>whoami</code> take <code>--json</code>: the result is
   one JSON document on stdout, and a refusal is one on stderr -
   <code>{"errors": [{"kind", "exit_code", "stage", "headline", "reason", "expected", "next"}]}</code> - with
   the same exit code. <code>kind</code> is a stable name for the code, such as <code>not-found</code> for

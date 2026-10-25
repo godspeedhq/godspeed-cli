@@ -51,7 +51,9 @@ fn published(name: &str, version: Version, when: &str, already: bool) {
     } else {
         println!("Published {name}@{version} ({when})");
     }
+    // Two steps, because a machine's `install` starts only a package it has already fetched.
     println!("Install, on a Godspeed machine:");
+    println!("  godspeed fetch {name}");
     println!("  godspeed install {name}");
     println!("Verify it from the registry, as a client would: godspeed fetch {name}@{version}");
 }

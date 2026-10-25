@@ -47,7 +47,7 @@ struct Cli {
 enum Command {
     /// Create a new project: `service`, `utility`, `app`, `driver` or `library`
     New {
-        /// service | library
+        /// service | utility | app | driver | library
         kind: String,
         /// The project's name, as the OS contract schema allows it
         name: String,
@@ -210,6 +210,11 @@ enum Command {
     },
     #[command(hide = true)]
     Update {
+        #[arg(trailing_var_arg = true)]
+        _rest: Vec<String>,
+    },
+    #[command(hide = true)]
+    Upgrade {
         #[arg(trailing_var_arg = true)]
         _rest: Vec<String>,
     },
@@ -489,6 +494,7 @@ fn dispatch(cli: Cli) -> diag::Result<()> {
         Command::Install { .. } => Err(cmd::unavailable::native("install").into()),
         Command::List { .. } => Err(cmd::unavailable::native("list").into()),
         Command::Update { .. } => Err(cmd::unavailable::native("update").into()),
+        Command::Upgrade { .. } => Err(cmd::unavailable::native("upgrade").into()),
         Command::Uninstall { .. } => Err(cmd::unavailable::native("uninstall").into()),
     }
 }

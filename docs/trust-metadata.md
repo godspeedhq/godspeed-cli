@@ -2,7 +2,8 @@
 
 **Status: DRAFT, implemented** - `crates/godspeed-package/src/trust.rs` (reading and verifying, `no_std`,
 no allocator), `godspeed-registry`'s `tools/trust` (the maintainer's offline signing) and Worker (snapshot
-and timestamp), and `godspeed fetch` (the client). Nothing here is a promise until the first public publish.
+and timestamp), and `godspeed fetch` (the client). In use by the official registry since its first public
+publish, 2026-10-16; format 1 is frozen.
 
 What a client needs, beyond a package's own files (`docs/package-format.md`), to know that a release is one
 its publisher's key signed and the registry vouches for - without trusting the registry's storage, its

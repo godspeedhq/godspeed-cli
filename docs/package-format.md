@@ -1,8 +1,9 @@
 # The Godspeed package format, version 1
 
-**Status: DRAFT. Implemented by `crates/godspeed-package`; `godspeed package` produces packages,
-`godspeed sign` signs them and `godspeed verify` checks them. Nothing installs them yet, and nothing here is a promise until the first
-package is published.**
+**Status: in use. Implemented by `crates/godspeed-package`; `godspeed package` produces packages,
+`godspeed sign` signs them and `godspeed verify` checks them, the official registry has published them since
+2026-10-16, and GodspeedOS's `godspeed-pm` installs them (from GodspeedOS 0.29.0). Format 1 and format 2 are
+frozen (section 5).**
 
 A package is one version of one Godspeed program, as files that can be inspected and verified without the
 CLI, the registry or any network. This document defines those files and the rules for reading them. The
@@ -63,7 +64,7 @@ File names are fixed. The manifest never names a path, so it cannot point a read
 | `format` | required; `1`, or `2` exactly when the manifest has requirements (below). Any other value is refused before anything else is read (section 5). |
 | `package.name` | required; `publisher/name`, each part a lowercase letter then lowercase letters, digits and `-`, at most 64 bytes - the OS contract schema's rule for a service name. |
 | `package.version` | required; `MAJOR.MINOR.PATCH`, decimal, no leading zeros, no suffix. Equal to the contract's `version`. |
-| `package.kind` | required; `service`, `utility`, `app` or `driver` (the last three added 2026-10-17, still format 1: a reader that does not know one refuses the manifest by naming the kind). A `library` is refused with the reason: libraries are depended on, not installed, and their distribution is not defined yet. A `driver`'s contract names its device by PCI class (`hw_pci_class`, `hw_pci_bar`). |
+| `package.kind` | required; `service`, `utility`, `app` or `driver` (the last three added 2026-10-17, still format 1: a reader that does not know one refuses the manifest by naming the kind). A `library` is refused with the reason: libraries are depended on, not installed, and their distribution is not defined yet. A `driver`'s contract names its device by PCI class (`hw_pci_class`, `hw_pci_bar`), with `hw_pci_irq` for its interrupt and `hw_dma` for a DMA arena, or a USB device by vendor and product (`hw_usb`); the last three need GodspeedOS v0.31.0 or later, whose schema has them. `hw_dma` is at most 2 MiB, and `hw_usb` goes with none of `hw_pci_class`, `hw_pci_irq` and `hw_dma`: the supervisor refuses either at install. |
 | `package.description` | optional; at most 256 bytes, no control characters. |
 | `package.license` | optional; at most 64 bytes, no control characters. Not interpreted. |
 | `os.release` | required; the GodspeedOS release the package was built against. |
@@ -98,10 +99,11 @@ manifest's exact bytes, so two spellings of one manifest would be two different 
 
 ### The package name and the service name
 
-The `name` part of `publisher/name` must equal the contract's `name`. On a Godspeed machine a service is
-known by its contract name, so the package cannot call itself one thing and run as another. Two publishers'
-`hello` packages therefore both run as `hello`; what a machine does about that is the native package
-manager's question, and is not answered here.
+The `name` part of `publisher/name` must equal the contract's `name`, so the package cannot call itself one
+thing and be built as another. On a Godspeed machine an installed package runs under its package name,
+`publisher/name`, which no built-in service can hold: two publishers' `hello` packages are two services,
+`alice/hello` and `bob/hello`, and neither can stand in for a built-in one (GodspeedOS's CLAUDE.md 14.1,
+the 2026-10-17 install amendment).
 
 ## 3. What the manifest deliberately does not carry
 
@@ -127,7 +129,8 @@ manager's question, and is not answered here.
 
 ## 4. Verifying a package
 
-A reader, holding a manifest it has decided to trust (how is section 3's open question):
+A reader, holding a manifest it has decided to trust (through the registry's signed metadata,
+`docs/trust-metadata.md`, or, for a local `.gsp` file, a publisher key its operator trusts):
 
 1. parses it, refusing an unknown format and any rule broken;
 2. checks `contract.toml` against `contract.digest`, and the contract's `name` and `version` against the
@@ -192,16 +195,20 @@ the form above. `godspeed sign <dir>` does it with your key (`godspeed key gener
 - **The crate is versioned separately from the CLI** and follows semver for its Rust API. Its major version
   changes when its API does; the format number changes when the files do.
 
-## 6. Open questions
+## 6. Questions
 
-These are recorded, not answered:
+Answered, by what was built:
 
-1. **How the native side reads the text without a heap.** The core types and validation are `no_std` and
-   allocation-free; the TOML parser is not. Either a bounded TOML-subset reader for exactly this format,
-   or a canonical binary encoding beside the text. Decided when the native package manager is.
-2. **Trust in the manifest**: signatures exist (section 4a). Still open: binding a key to a publisher in
-   metadata the registry cannot alter, and the index's own integrity - TUF's root, snapshot and timestamp
-   roles (`docs/publishing-design.md` section 6).
-3. **What `os.release` permits on install**: exact match only, or a range, once the OS has an API version.
-4. **Two publishers, one service name** on one machine (section 2).
+1. **How the native side reads the text without a heap**: a bounded reader for exactly this format, in
+   GodspeedOS (`services/godspeed-pm/src/toml_lines.rs`), reading into this crate's own types, so every rule
+   here is checked there by the same code.
+2. **Trust in the manifest**: a publisher's keys are listed in the registry's `namespaces` document, signed
+   offline, and the index's integrity is TUF's snapshot and timestamp roles (`docs/trust-metadata.md`).
+3. **What `os.release` permits on install**: a floor. GodspeedOS refuses a package built for a release before
+   0.29.0, when what a program reads at start changed (`LAYOUT_RELEASE`); nothing caps it from above. A range
+   waits for the OS to have an API version.
+4. **Two publishers, one service name** on one machine: each runs under its package name (section 2).
+
+Still open:
+
 5. **Library packages**: whether, and how, a library is distributed at all.
