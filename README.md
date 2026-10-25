@@ -120,16 +120,15 @@ Its source is [`site/`](site/), plain HTML published by `.github/workflows/pages
 | `service` | kept running by the system: started at every boot, restarted if it dies, upgraded live if its contract declares `handover` | `godspeed new service clock`: logs that it started, then waits |
 | `utility` | does one job when typed at `gsh>`, ends with a status, takes arguments and pipes (`gs::program`) | `godspeed new utility greet`: `greet Bankole` prints `hello, Bankole` |
 | `app` | has the screen and the keyboard while it runs, and gives them back when it ends (`gs::app`); the operator approves the console at install | `godspeed new app notes`: says hello until a key is pressed |
-| `driver` | drives one device, named in its contract by PCI class code (or a USB device by vendor and product, `hw_usb`), written on `gs::driver` like the OS's own drivers: its register window, its interrupt, a DMA arena the operator agrees to, a device the OS drives taken over, a USB device through its host (`bus`); **registers need GodspeedOS 0.30.0, the rest the release after it** | `godspeed new driver sensor`: drives QEMU's `edu` by its registers, its interrupt and DMA, and logs `5! = 120 by interrupt, 64 bytes through DMA and back intact` |
+| `driver` | drives one device, named in its contract by PCI class code (or a USB device by vendor and product, `hw_usb`), written on `gs::driver` like the OS's own drivers: its register window, its interrupt, a DMA arena the operator agrees to, a device the OS drives taken over, a USB device through its host (`bus`); **registers need GodspeedOS 0.30.0, the rest 0.31.0** | `godspeed new driver sensor`: drives QEMU's `edu` by its registers, its interrupt and DMA, and logs `5! = 120 by interrupt, 64 bytes through DMA and back intact` |
 | `library` | reusable `no_std` Rust for the others; never installed, and its tests run on your workstation | `godspeed new library parser` |
 
 Every template is written on the public standard library, `gs`, and nothing below it. CI makes, checks and builds
 every kind for all four architectures (`tests/cli.rs`, `every_generated_program_builds_for_every_architecture`),
 and GodspeedOS installs each of the four program templates from a package file and sees it work
-(`osdev test kinds` there). One exception, on this branch: the driver template asks for its interrupt and a DMA
-arena, which only the GodspeedOS release after v0.30.0 has, so against v0.30.0 `godspeed new driver` makes it and
-`godspeed check` refuses its contract (`'hw_dma' was unexpected`); the e2e test and CI's template job fail on it
-until that release is in CI's matrix. The [guide](https://godspeedhq.github.io/godspeed-cli/kinds.html) takes each kind end to end.
+(`osdev test kinds` there). The driver template asks for its interrupt and a DMA arena, which GodspeedOS has
+from v0.31.0, so against v0.30.0 `godspeed new driver` makes it and `godspeed check` refuses its contract
+(`'hw_dma' was unexpected`). The [guide](https://godspeedhq.github.io/godspeed-cli/kinds.html) takes each kind end to end.
 
 ## Use
 
@@ -153,7 +152,7 @@ every architecture in CI and explained on the [examples page](https://godspeedhq
 
 | command | status |
 |---|---|
-| `new service`, `new utility`, `new app`, `new driver`, `new library` | works (a driver against GodspeedOS 0.30.0 or later for its registers; the template, which asks for an interrupt and DMA, against the release after v0.30.0) |
+| `new service`, `new utility`, `new app`, `new driver`, `new library` | works (a driver against GodspeedOS 0.30.0 or later for its registers; the template, which asks for an interrupt and DMA, against v0.31.0 or later) |
 | `check` | works: the project, its toolchain pin, its stdlib release, and the contract against the OS's schema |
 | `build [--arch <isa> \| --all]` | works: one ELF per architecture for a program, an rlib for a library |
 | `test` | works for a library (on the host); refused for a program, which runs only on a Godspeed machine (see below) |

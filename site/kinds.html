@@ -172,8 +172,8 @@ match irq.wait(&amp;ctx, Budget::ms(1000)) {      // bounded by time, never by a
       notice, so a driver there asks for a bulk IN again.</li>
       <li>The template drives QEMU's <code>edu</code> (<code>-device edu</code>) by all three grants: installed, it
       logs <code>device id 0x010000ed, alive true, 5! = 120 by interrupt, 64 bytes through DMA and back intact</code>.</li>
-      <li><strong>The interrupt, the arena, a device taken over and a USB device need the GodspeedOS release after
-      v0.30.0.</strong> On v0.30.0 a driver package is given its registers only.</li>
+      <li><strong>The interrupt, the arena, a device taken over and a USB device need GodspeedOS v0.31.0 or
+      later.</strong> On v0.30.0 a driver package is given its registers only.</li>
     </ul>
   </section>
 

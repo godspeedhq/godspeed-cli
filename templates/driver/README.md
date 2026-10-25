@@ -35,7 +35,7 @@ A Godspeed driver, created by `godspeed new driver {{name}}` against GodspeedOS 
   only; `ehci` on the T630's back sockets, which sends no notice, so call `bulk_in` again rather than waiting to
   be told.
 
-The interrupt, the arena, a device taken over and a USB device need the GodspeedOS release after v0.30.0.
+The interrupt, the arena, a device taken over and a USB device need GodspeedOS v0.31.0 or later.
 
 ## `gs::driver`, and the SDK
 

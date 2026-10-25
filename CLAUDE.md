@@ -887,7 +887,7 @@ and say so (exit 20). A library's `godspeed test` works.
 | `library` | Reusable code for other Godspeed projects; not executable or installable on its own | **Yes**, as a Rust crate. How it is distributed and depended on is defined separately from executable packages |
 | `utility` | A program that performs one operation and ends | **Yes, from GodspeedOS 0.29.0** (and a checkout ahead of 0.28.0). The OS's `Exit` syscall (its CLAUDE.md 14.5 amendment, 2026-10-17) and `gs::program`: the shell runs an installed utility by its name, hands it its arguments, shows or pipes its output and says its status. A release before that cannot build one: the template uses `gs::program` |
 | `app` | A user-facing program with the screen and the keyboard while it runs | **Yes, from GodspeedOS 0.29.0** (and a checkout ahead of 0.28.0): a utility that holds the console foreground, through `gs::app`. The operator approves the console at install. Not windows, not a graphics surface beyond the console's grid: those are later, if ever |
-| `driver` | A userspace driver for one device, named in its contract by PCI class code and register BAR, or (after 0.30.0) a USB device by vendor and product | **Yes, from GodspeedOS 0.29.0**, REGISTERS ONLY there and in 0.30.0: the operator approves the device at install, the OS finds which device of that class it is, and the driver is given that device's register window - no DMA arena and no interrupt, and never a class a GodspeedOS driver already handles. **The release after 0.30.0** adds its interrupt (`hw_pci_irq`), a DMA arena (`hw_dma`), taking over a device a GodspeedOS driver handles, and USB (`hw_usb`, through its host). The template uses its interrupt and DMA, so it builds against that release; against 0.30.0, `godspeed check` refuses its contract |
+| `driver` | A userspace driver for one device, named in its contract by PCI class code and register BAR, or (from 0.31.0) a USB device by vendor and product | **Yes, from GodspeedOS 0.29.0**, REGISTERS ONLY there and in 0.30.0: the operator approves the device at install, the OS finds which device of that class it is, and the driver is given that device's register window - no DMA arena and no interrupt, and never a class a GodspeedOS driver already handles. **0.31.0** adds its interrupt (`hw_pci_irq`), a DMA arena (`hw_dma`), taking over a device a GodspeedOS driver handles, and USB (`hw_usb`, through its host). The template uses its interrupt and DMA, so it builds against 0.31.0 and later; against 0.30.0, `godspeed check` refuses its contract |
 
 These are developer-facing roles. They create no new kernel task class and no privileged identity.
 
@@ -1095,7 +1095,7 @@ On the native side:
 - uninstalling deletes none of the package's data (its folders under `/system/` and `/users/`), and keeps its
   fetched copy unless `purge` is given; there is no command that deletes a package's data yet;
 - **installing or upgrading never grants a requested capability by itself.** The operator is asked, at the
-  prompt, for each peer the contract requests, and for a device, the console or (after 0.30.0) a DMA arena; nothing
+  prompt, for each peer the contract requests, and for a device, the console or (from 0.31.0) a DMA arena; nothing
   else is granted, and the answer is recorded with the package.
 
 ## What GodspeedOS Does Not Provide Yet
@@ -1106,7 +1106,6 @@ and each blocks a named part of this contract:
 | Missing in the OS | What it blocks here | Where the OS tracks it |
 |---|---|---|
 | A public way to boot a machine, in QEMU or on hardware, with a package already installed | `godspeed run`, and `godspeed test` for a program | not designed |
-| A program's interrupt, DMA arena, device takeover and USB, for a driver package | the `driver` template against 0.30.0 (it builds against the release after) | built on the OS's `feat/driver-packages`, in no release yet |
 | A versioned public API/ABI | compatibility beyond "built against this OS release" | the OS's v1 work |
 | A command that deletes an uninstalled package's data | "`delete data` says exactly what it will destroy" | not designed |
 
@@ -1122,6 +1121,7 @@ What this table listed before, and the OS has since built:
 | A terminating program (`Exit`, `gs::program`), so `utility` and `app` | 0.29.0 (its CLAUDE.md 14.5) |
 | A device for a driver outside the OS tree, by PCI class, registers only | 0.29.0; `gs::driver::registers` in 0.30.0 |
 | Packages that require other packages | 0.30.0 |
+| A program's interrupt, DMA arena, device takeover and USB, for a driver package | 0.31.0 (its CLAUDE.md 14.1, amendment 2026-10-23) |
 
 ## Failure and Recovery
 
