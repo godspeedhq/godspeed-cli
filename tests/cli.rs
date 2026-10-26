@@ -183,6 +183,18 @@ fn every_kind_is_made_and_an_unknown_one_is_refused() {
         contract.contains("hw_pci_class"),
         "a driver's contract names its device by class"
     );
+    // A driver ships a gdcs.toml, for the conformance suite: its target release filled in (no `v`), its name
+    // in the behaviour, and no unfilled placeholder.
+    let gdcs = std::fs::read_to_string(dir.join("drv").join("gdcs.toml")).unwrap_or_default();
+    assert!(
+        gdcs.contains("os = \"0.28.0\""),
+        "gdcs.toml names the target release: {gdcs}"
+    );
+    assert!(
+        gdcs.contains("drv: device id"),
+        "gdcs.toml's behaviour names the driver: {gdcs}"
+    );
+    assert!(!gdcs.contains("{{"), "unfilled placeholder in gdcs.toml: {gdcs}");
     let o = godspeed(&dir, Some(&os), &["new", "widget", "x"]);
     assert_eq!(code(&o), 10);
     assert!(!dir.join("x").exists(), "a refused kind must write nothing");
