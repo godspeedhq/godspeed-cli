@@ -1,0 +1,23 @@
+# GDCS declaration: what the Godspeed Driver Conformance Suite (godspeed-gdcs) reads to test this driver.
+# It is the driver author's, kept beside the source. Not needed to build or package the driver; only to test it.
+
+format = 1
+
+# The GodspeedOS release this driver is built and tested against. GDCS checks it against the platform file and
+# image it is given and refuses to start on a mismatch, so a test against the wrong release is caught up front.
+[target]
+os = "{{os}}"
+
+# What QEMU must be given to exercise the driver, beyond the disks and network card GDCS always adds. This
+# template's device is QEMU's teaching device `edu`; a real driver names what its device is emulated by, or
+# leaves this out when GDCS runs it on hardware.
+[qemu]
+devices = ["edu"]
+
+# What the driver claims to do: a line it logs when it has done its job, which GDCS waits for after installing
+# it (Stage 3). A functional pass covers only what is declared here; a driver that declares nothing is reported
+# as a probe. This one matches the line src/main.rs logs on `edu`.
+[[behaviour]]
+id = "identity-factorial-dma"
+expect = "{{name}}: device id 0x010000ed, alive true, 5! = 120 by interrupt, 64 bytes through DMA and back intact"
+within-secs = 30

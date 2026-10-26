@@ -127,6 +127,10 @@ const DRIVER: &[File] = &[
         body: include_str!("../../templates/driver/contracts/contract.toml"),
     },
     File {
+        path: "gdcs.toml",
+        body: include_str!("../../templates/driver/gdcs.toml"),
+    },
+    File {
         path: "src/main.rs",
         body: include_str!("../../templates/driver/src/main.rs"),
     },
@@ -246,6 +250,7 @@ pub fn run(
     let fill = |s: &str| {
         s.replace("{{name}}", name)
             .replace("{{tag}}", &platform.tag())
+            .replace("{{os}}", &platform.version)
             .replace("{{git}}", OS_GIT_URL)
             .replace("{{toolchain}}", &platform.toolchain)
             .replace("{{targets}}", &targets)
