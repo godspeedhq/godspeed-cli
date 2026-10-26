@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! The Godspeed package contract.
 //!
 //! What a Godspeed package IS, as types and rules that the developer CLI (which produces packages) and the

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Publisher signatures over manifests: `manifest.sig`, beside `manifest.toml`.
 //!
 //! A signature establishes which KEY signed a manifest - and through the manifest's digests, every file of

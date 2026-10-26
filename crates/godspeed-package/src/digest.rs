@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Content digests: `sha256:<64 lowercase hex digits>`.
 
 use core::fmt;

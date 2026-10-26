@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! The manifest's text form, `manifest.toml`. Host-only (feature `toml`).
 //!
 //! Reading is strict: an unknown key, a missing field or a value of the wrong form is an error, never
