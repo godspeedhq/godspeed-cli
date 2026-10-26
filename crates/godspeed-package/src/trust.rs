@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! The registry's trust metadata: which keys may sign what, and proof that an index is current.
 //!
 //! Four documents, after The Update Framework's roles (`docs/publishing-design.md` section 6):

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! The package index: every published version of one package, as the registry serves it.
 //!
 //! The index is the registry's only mutable file per package, and the link from mutable to immutable: each

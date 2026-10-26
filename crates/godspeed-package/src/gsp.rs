@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! The `.gsp` file: a package that travels as one file and installs with no network.
 //!
 //! A `.gsp` is a slice of a registry in a file. It holds the very documents a fetch reads - the trust chain from

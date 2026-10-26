@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! The package manifest: what one version of one package is.
 
 use crate::arch::Arch;

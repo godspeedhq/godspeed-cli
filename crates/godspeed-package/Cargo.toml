@@ -4,7 +4,7 @@ name = "godspeed-package"
 # manager, and changes on its own schedule (see FORMAT in src/manifest.rs for the manifest's own version).
 version = "0.1.0"
 edition = "2021"
-license = "GPL-2.0-only"
+license = "Apache-2.0 OR MIT"
 description = "The Godspeed package contract: manifest types, their validation, and artifact verification. no_std, no allocator."
 rust-version = "1.80"
 

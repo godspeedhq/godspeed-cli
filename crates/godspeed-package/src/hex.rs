@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Lowercase hexadecimal, both ways, without a heap. One spelling per value: uppercase is refused.
 
 use core::fmt;

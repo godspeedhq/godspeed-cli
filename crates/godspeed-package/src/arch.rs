@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! The architectures a package can carry an artifact for.
 
 use core::fmt;

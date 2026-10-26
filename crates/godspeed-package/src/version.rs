@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Versions: `MAJOR.MINOR.PATCH`.
 
 use core::fmt;

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 //! Streaming artifact verification, with no heap.
 
 use crate::digest::Sha256Digest;
